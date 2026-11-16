@@ -340,6 +340,8 @@ void Nocturne_WindowEvent( const struct gui_event *e )
 	case EV_UNFOCUS:
 		IN_ReleaseAll();
 		gw_active = qfalse;
+		// a minimized window is one that was shown and no longer is
+		gw_minimized = ( win_state( nwin.win ) & WIN_STATE_VISIBLE ) ? qfalse : qtrue;
 		pointerLocked = qfalse;
 		pointerLockWanted = qfalse;
 		break;

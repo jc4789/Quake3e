@@ -100,9 +100,10 @@ static qboolean GLW_OpenWindow( glconfig_t *config, int mode, const char *modeFS
 	nwin.height = nwin.win->h;
 	nwin.isFullscreen = qfalse;
 
-	r = win_state( nwin.win );
-	gw_active = ( r >= 0 && ( r & WIN_STATE_FOCUSED ) ) ? qtrue : qfalse;
-	gw_minimized = ( r >= 0 && !( r & WIN_STATE_VISIBLE ) ) ? qtrue : qfalse;
+	// The window system shows a window with its first present and gives it the focus then (EV_FOCUS):
+	// a window not yet shown is not a minimized one, and the renderer must draw to make it appear.
+	gw_active = qtrue;
+	gw_minimized = qfalse;
 
 	return qtrue;
 }
