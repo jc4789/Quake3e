@@ -348,7 +348,7 @@ typedef enum {
 #define	EVENT_VALID_MSEC	300
 
 typedef enum {
-	EV_NONE,
+	EV_NO_EVENT,	// not EV_NONE: that is a name of Nocturne's window events
 
 	EV_FOOTSTEP,
 	EV_FOOTSTEP_METAL,

@@ -3456,12 +3456,16 @@ static void CL_InitRef( void ) {
 	rimp.CL_IsMinimized = CL_IsMininized;
 	rimp.CL_SetScaling = CL_SetScaling;
 
+#ifndef __nocturne__
 	rimp.Sys_SetClipboardBitmap = Sys_SetClipboardBitmap;
+#endif
 	rimp.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
 	rimp.Com_RealTime = Com_RealTime;
 
+#ifndef __nocturne__
 	rimp.GLimp_InitGamma = GLimp_InitGamma;
 	rimp.GLimp_SetGamma = GLimp_SetGamma;
+#endif
 
 	// OpenGL API
 #ifdef USE_OPENGL_API

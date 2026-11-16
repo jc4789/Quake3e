@@ -1749,6 +1749,7 @@ This allows a server to do a map_restart without changing memory allocation
 vm_t *VM_Restart( vm_t *vm ) {
 	vmHeader_t	*header;
 
+#ifndef __nocturne__
 	// DLL's can't be restarted in place
 	if ( vm->dllHandle ) {
 		syscall_t		systemCall;
@@ -1764,6 +1765,7 @@ vm_t *VM_Restart( vm_t *vm ) {
 		vm = VM_Create( index, systemCall, dllSyscall, VMI_NATIVE );
 		return vm;
 	}
+#endif
 
 	// load the image
 	if( ( header = VM_LoadQVM( vm, qfalse ) ) == NULL ) {
@@ -1780,6 +1782,7 @@ vm_t *VM_Restart( vm_t *vm ) {
 }
 
 
+#ifndef __nocturne__
 /*
 =================
 Sys_LoadDll
@@ -1819,6 +1822,7 @@ static void * QDECL VM_LoadDll( const char *name, vmMainFunc_t *entryPoint, dllS
 
 	return libHandle;
 }
+#endif
 
 
 /*
@@ -1864,6 +1868,12 @@ vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscall
 	vm->dllSyscall = dllSyscalls;
 	vm->privateFlag = CVAR_PRIVATE;
 
+#ifdef __nocturne__
+	// native code is not loaded: a program is a bytecode image
+	if ( interpret == VMI_NATIVE ) {
+		interpret = VMI_COMPILED;
+	}
+#else
 	// never allow dll loading with a demo
 	if ( interpret == VMI_NATIVE ) {
 		if ( Cvar_VariableIntegerValue( "fs_restrict" ) ) {
@@ -1886,6 +1896,7 @@ vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscall
 		Com_Printf( "Failed to load dll, looking for qvm.\n" );
 		interpret = VMI_COMPILED;
 	}
+#endif
 
 	// load the image
 	if( ( header = VM_LoadQVM( vm, qtrue ) ) == NULL ) {
@@ -1962,8 +1973,10 @@ void VM_Free( vm_t *vm ) {
 	if ( vm->destroy )
 		vm->destroy( vm );
 
+#ifndef __nocturne__
 	if ( vm->dllHandle )
 		Sys_UnloadLibrary( vm->dllHandle );
+#endif
 
 #if 0	// now automatically freed by hunk
 	if ( vm->codeBase.ptr ) {
@@ -2210,10 +2223,12 @@ static void VM_VmInfo_f( void ) {
 			continue;
 		}
 		Com_Printf( "%s : ", vm->name );
+#ifndef __nocturne__
 		if ( vm->dllHandle ) {
 			Com_Printf( "native\n" );
 			continue;
 		}
+#endif
 		if ( vm->compiled ) {
 			Com_Printf( "compiled on load\n" );
 		} else {

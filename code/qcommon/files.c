@@ -5793,6 +5793,7 @@ const char *FS_GetHomePath( void )
 }
 
 
+#ifndef __nocturne__
 fileHandle_t FS_PipeOpenWrite( const char *cmd, const char *filename ) {
 	fileHandleData_t *fd;
 	fileHandle_t f;
@@ -5858,8 +5859,10 @@ void FS_PipeClose( fileHandle_t f )
 
 	Com_Memset( &fsh[f], 0, sizeof( fsh[f] ) );
 }
+#endif
 
 
+#ifndef __nocturne__
 /*
 =================
 FS_LoadLibrary
@@ -5885,3 +5888,4 @@ void *FS_LoadLibrary( const char *name )
 
 	return libHandle;
 }
+#endif

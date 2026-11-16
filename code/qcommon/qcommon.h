@@ -23,7 +23,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef _QCOMMON_H_
 #define _QCOMMON_H_
 
+#ifndef __nocturne__
 #include <sys/types.h>
+#endif
 #include "cm_public.h"
 
 //Ignore __attribute__ on non-gcc/clang platforms
@@ -719,7 +721,11 @@ typedef	time_t fileTime_t;
 #if defined  (_MSC_VER) && defined (__clang__)
 typedef	_off_t  fileOffset_t;
 #else
+#ifdef __nocturne__
+typedef	int64_t  fileOffset_t;
+#else
 typedef	off_t  fileOffset_t;
+#endif
 #endif
 
 qboolean FS_Initialized( void );
@@ -883,7 +889,9 @@ const char *FS_GetHomePath( void );
 qboolean FS_StripExt( char *filename, const char *ext );
 qboolean FS_AllowedExtension( const char *fileName, qboolean allowPk3s, const char **ext );
 
+#ifndef __nocturne__
 void *FS_LoadLibrary( const char *name );
+#endif
 
 typedef qboolean ( *fnamecallback_f )( const char *filename, int length );
 
@@ -895,8 +903,10 @@ qboolean FS_CreatePath( const char *ospath );
 
 // AVI pipes
 
+#ifndef __nocturne__
 fileHandle_t FS_PipeOpenWrite( const char *cmd, const char *filename );
 void FS_PipeClose( fileHandle_t f );
+#endif
 
 
 /*
@@ -1300,7 +1310,9 @@ char	*Sys_ConsoleInput( void );
 void	NORETURN FORMAT_PRINTF(1, 2) QDECL Sys_Error( const char *error, ... );
 void	NORETURN Sys_Quit( void );
 char	*Sys_GetClipboardData( void );	// note that this isn't journaled...
+#ifndef __nocturne__
 void	Sys_SetClipboardBitmap( const byte *bitmap, int length );
+#endif
 
 void	Sys_Print( const char *msg );
 

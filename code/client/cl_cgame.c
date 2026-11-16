@@ -1061,7 +1061,9 @@ static void CL_FirstSnapshot( void ) {
 		Cvar_Set( "activeAction", "" );
 	}
 
+#ifndef __nocturne__
 	Sys_BeginProfiling();
+#endif
 }
 
 

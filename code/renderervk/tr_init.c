@@ -580,7 +580,9 @@ static void InitOpenGL( void )
 
 		glConfig.deviceSupportsGamma = qfalse;
 
+#ifndef __nocturne__ // the window system has no gamma ramp: the renderer applies the gamma
 		ri.GLimp_InitGamma( &glConfig );
+#endif
 
 		gls.deviceSupportsGamma = glConfig.deviceSupportsGamma;
 
@@ -947,10 +949,13 @@ void RB_TakeScreenshotBMP( int x, int y, int width, int height, const char *file
 	// gamma correction
 	R_GammaCorrect( buffer, memcount );
 
+#ifndef __nocturne__
 	if ( clipboardOnly ) {
 		// copy starting from bitmapinfoheader
 		ri.Sys_SetClipboardBitmap( buffer - 40, memcount + 40 );
-	} else {
+	} else
+#endif
+	{
 		ri.FS_WriteFile( fileName, buffer - header_size, memcount + header_size );
 	}
 
@@ -1093,9 +1098,11 @@ static void R_ScreenShot_f( void ) {
 
 	if ( !strcmp( ri.Cmd_Argv(1), "silent" ) ) {
 		silent = qtrue;
+#ifndef __nocturne__
 	} else if ( typeMask == SCREENSHOT_BMP && !strcmp( ri.Cmd_Argv(1), "clipboard" ) ) {
 		backEnd.screenshotMask |= SCREENSHOT_BMP_CLIPBOARD;
 		silent = qtrue;
+#endif
 	} else {
 		silent = qfalse;
 	}

@@ -507,6 +507,10 @@ qboolean CL_OpenAVIForWriting( const char *fileName, const char *pipeFormat, qbo
 			}
 			return qfalse;
 		}
+#elif defined( __nocturne__ )
+		(void)ospath;
+		Com_Printf( S_COLOR_YELLOW "%s: encoding through a pipe is not available\n", __func__ );
+		return qfalse;
 #else // ! USE_WIN32_NAMED_PIPES
 		char cmd[MAX_OSPATH*3];
 		const char *cmd_fmt = "ffmpeg -threads 0 -f avi -i - -y %s \"%s\" 2> \"%s-log.txt\"";

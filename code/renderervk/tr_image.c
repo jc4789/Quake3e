@@ -1708,7 +1708,9 @@ void R_SetColorMappings( void ) {
 		s_intensitytable[i] = j;
 	}
 
-#ifdef USE_VULKAN
+#ifdef __nocturne__
+	(void)applyGamma;
+#elif defined( USE_VULKAN )
 	if ( gls.deviceSupportsGamma ) {
 		if ( vk.fboActive )
 			ri.GLimp_SetGamma( s_gammatable_linear, s_gammatable_linear, s_gammatable_linear );

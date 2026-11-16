@@ -24,7 +24,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "q_shared.h"
 #include "qcommon.h"
 #include <setjmp.h>
-#ifndef _WIN32
+#ifdef __nocturne__
+#elif !defined( _WIN32 )
 #include <netinet/in.h>
 #include <sys/stat.h> // umask
 #include <sys/time.h>
@@ -914,6 +915,7 @@ int Com_RealTime(qtime_t *qtime) {
 Sys_Microseconds
 ================
 */
+#ifndef __nocturne__ // the platform layer (nocturne_main.c) reads the monotonic clock
 int64_t Sys_Microseconds( void )
 {
 #ifdef _WIN32
@@ -944,6 +946,7 @@ int64_t Sys_Microseconds( void )
 	return (int64_t)curr.tv_sec * 1000000LL + (int64_t)curr.tv_usec;
 #endif
 }
+#endif // !__nocturne__
 
 
 /*
@@ -2794,7 +2797,9 @@ Com_GetSystemEvent
 static sysEvent_t Com_GetSystemEvent( void )
 {
 	sysEvent_t  ev;
+#ifndef __nocturne__
 	const char	*s;
+#endif
 	int			evTime;
 
 	// return if we have data
@@ -2805,6 +2810,7 @@ static sysEvent_t Com_GetSystemEvent( void )
 
 	evTime = Sys_Milliseconds();
 
+#ifndef __nocturne__
 	// check for console commands
 	s = Sys_ConsoleInput();
 	if ( s )
@@ -2817,6 +2823,7 @@ static sysEvent_t Com_GetSystemEvent( void )
 		strcpy( b, s );
 		Sys_QueEvent( evTime, SE_CONSOLE, 0, 0, len, b );
 	}
+#endif
 
 	// return if we have data
 	if ( eventHead - eventTail > 0 )
@@ -3367,7 +3374,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
 	fileHandle_t	f;
 	char			fbuffer[MAX_OSPATH];
 	char			key[17];
-#ifndef _WIN32
+#if !defined( _WIN32 ) && !defined( __nocturne__ )
 	mode_t			savedumask;
 #endif
 
@@ -3379,7 +3386,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
 		return;
 	}
 
-#ifndef _WIN32
+#if !defined( _WIN32 ) && !defined( __nocturne__ )
 	savedumask = umask(0077);
 #endif
 	f = FS_SV_FOpenFileWrite( fbuffer );
@@ -3396,7 +3403,7 @@ static void Com_WriteCDKey( const char *filename, const char *ikey ) {
 
 	FS_FCloseFile( f );
 out:
-#ifndef _WIN32
+#if !defined( _WIN32 ) && !defined( __nocturne__ )
 	umask(savedumask);
 #else
 	;
@@ -4216,8 +4223,10 @@ void Com_Init( char *commandLine ) {
 	// lastTime = com_frameTime = Com_Milliseconds();
 	Com_FrameInit();
 
+#ifndef __nocturne__
 	if ( !com_errorEntered )
 		Sys_ShowConsole( com_viewlog->integer, qfalse );
+#endif
 
 #ifndef DEDICATED
 	// make sure single player is off by default
@@ -4446,7 +4455,9 @@ void Com_Frame( qboolean noDelay ) {
 	// if "viewlog" has been modified, show or hide the log console
 	if ( com_viewlog->modified ) {
 		if ( !com_dedicated->integer ) {
+#ifndef __nocturne__
 			Sys_ShowConsole( com_viewlog->integer, qfalse );
+#endif
 		}
 		com_viewlog->modified = qfalse;
 	}
@@ -4549,10 +4560,14 @@ void Com_Frame( qboolean noDelay ) {
 			SV_Shutdown( "dedicated set to 0" );
 			SV_RemoveDedicatedCommands();
 #ifdef DEDICATED
+#ifndef __nocturne__
 			Sys_ShowConsole( com_viewlog->integer, qfalse );
+#endif
 #else
 			CL_Init();
+#ifndef __nocturne__
 			Sys_ShowConsole( com_viewlog->integer, qfalse );
+#endif
 			gw_minimized = qfalse;
 			CL_StartHunkUsers();
 #endif
@@ -4560,7 +4575,9 @@ void Com_Frame( qboolean noDelay ) {
 #ifndef DEDICATED
 			CL_Shutdown( "", qfalse );
 #endif
+#ifndef __nocturne__
 			Sys_ShowConsole( 1, qtrue );
+#endif
 			SV_AddDedicatedCommands();
 			gw_minimized = qtrue;
 		}

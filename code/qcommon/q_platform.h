@@ -162,6 +162,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #endif // __linux___
 
+// ============================== Nocturne =================================
+
+#ifdef __nocturne__
+
+#define OS_STRING "nocturne"
+#define ID_INLINE inline
+
+#endif // __nocturne__
+
 // =============================== BSD =====================================
 
 #if defined (__FreeBSD__) || defined (__NetBSD__) || defined (__OpenBSD__)

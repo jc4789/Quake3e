@@ -33,11 +33,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <windows.h>
 #endif
 
-#ifdef __FreeBSD__
+#if defined( __FreeBSD__ )
 #include <sys/types.h>
 #endif
 
-#ifndef _WIN32
+#ifdef __nocturne__
+#include <nocturne.h>
+#elif !defined( _WIN32 )
 #include <sys/mman.h> // for PROT_ stuff
 #endif
 
@@ -4449,7 +4451,14 @@ __compile:
 
 	VM_FreeBuffers();
 
-#ifdef VM_X86_MMAP
+#ifdef __nocturne__
+	// the code was written to read-write pages: they become read-execute
+	if ( n_memory_protect( vm->codeBase.ptr, vm->codeSize, N_MEMORY_READ_EXECUTE ) < 0 ) {
+		VM_Destroy_Compiled( vm );
+		Com_Printf( S_COLOR_WARNING "VM_CompileX86: n_memory_protect failed\n" );
+		return qfalse;
+	}
+#elif defined( VM_X86_MMAP )
 	if ( mprotect( vm->codeBase.ptr, vm->codeSize, PROT_READ|PROT_EXEC ) ) {
 		VM_Destroy_Compiled( vm );
 		Com_Printf( S_COLOR_WARNING "VM_CompileX86: mprotect failed\n" );
@@ -4490,7 +4499,12 @@ static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
 	int		length;
 
 	length = codeLength + tableLength;
-#ifdef VM_X86_MMAP
+#ifdef __nocturne__
+	if ( n_memory_reserve( (size_t)length, N_MEMORY_READ_WRITE, &ptr ) < 0 || !ptr ) {
+		Com_Error( ERR_FATAL, "VM_CompileX86: n_memory_reserve failed" );
+		return NULL;
+	}
+#elif defined( VM_X86_MMAP )
 	ptr = mmap( NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0 );
 	if ( ptr == MAP_FAILED ) {
 		Com_Error( ERR_FATAL, "VM_CompileX86: mmap failed" );
@@ -4526,7 +4540,9 @@ VM_Destroy_Compiled
 */
 static void VM_Destroy_Compiled( vm_t* vm )
 {
-#ifdef VM_X86_MMAP
+#ifdef __nocturne__
+	n_memory_release( vm->codeBase.ptr, vm->codeSize );
+#elif defined( VM_X86_MMAP )
 	munmap( vm->codeBase.ptr, vm->codeSize );
 #elif _WIN32
 	VirtualFree( vm->codeBase.ptr, 0, MEM_RELEASE );
