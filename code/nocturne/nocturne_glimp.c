@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // Nocturne の窓と Vulkan の surface。
 // 窓は WIN_FRAME_QUEUE | WIN_APP_SURFACES：面は Vulkan の swapchain が据え（n_vulkan_surface_create）、present は
 // SYS_WIN_SUBMIT になる（common/display_abi.h の窓の節）。全画面の窓の大きさは画面の大きさで、EV_RESIZE が知らせる。
+// 全画面の窓は面を直に出すよう頼む（win_direct）。
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
@@ -145,6 +146,8 @@ void VKimp_Init( glconfig_t *config )
 			config->vidWidth = nwin.width;
 			config->vidHeight = nwin.height;
 			config->windowAspect = (float)nwin.width / (float)nwin.height;
+			// 全画面の間、画面の核は合成せずに swapchain の面を画面へ直に出せる。出せない画面では何も変わらない。
+			(void)win_direct( nwin.win, true );
 		} else {
 			Com_Printf( "...WARNING: fullscreen unavailable\n" );
 			config->isFullscreen = qfalse;
