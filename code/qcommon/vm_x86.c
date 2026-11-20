@@ -2,6 +2,7 @@
 ===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
 Copyright (C) 2011-2026 Quake3e project
+Copyright (C) Nocturne contributors.
 
 This file is part of Quake III Arena source code.
 
