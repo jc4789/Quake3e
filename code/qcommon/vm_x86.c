@@ -211,6 +211,9 @@ typedef enum {
 #endif
 
 static	byte     *code;
+// code に書く番地と、組んだコードが走る番地の差。Nocturne では書ける記憶に組んでからコードの領域へ写すので、
+// コードに埋める自分の番地（instructionPointers など）にはこの差を足す。ほかの系では 0。
+static	intptr_t codeDelta;
 static	int      compiledOfs;
 static	int      *instructionOffsets;
 static	intptr_t *instructionPointers;
@@ -2294,7 +2297,7 @@ static void EmitCallFunc( vm_t *vm )
 #if idx64
 	emit_call_index( R_INSPOINTERS, R_EAX ); // call qword ptr [instructionPointers+rax*8]
 #else
-	emit_call_index_offset( (intptr_t)instructionPointers, R_EAX ); // call dword ptr [vm->instructionPointers + eax*8]
+	emit_call_index_offset( (intptr_t)instructionPointers + codeDelta, R_EAX ); // call dword ptr [vm->instructionPointers + eax*8]
 #endif
 
 	emit_ret();	// ret
@@ -3426,6 +3429,7 @@ qboolean VM_Compile( vm_t *vm, vmHeader_t *header ) {
 #endif
 
 	code = NULL; // we will allocate memory later, after last defined pass
+	codeDelta = 0;
 	instructionPointers = NULL;
 
 	if ( vm->forceDataMask || ( vm_rtChecks->integer & VM_RTCHECK_DATA ) == 0 ) {
@@ -3489,7 +3493,7 @@ __compile:
 #endif // USE_X87
 
 	// do not use wrapper, force constant size there
-	emit_mov_rx_imm64( R_INSPOINTERS, (intptr_t) instructionPointers ); // mov r8, vm->instructionPointers
+	emit_mov_rx_imm64( R_INSPOINTERS, (intptr_t) instructionPointers + codeDelta ); // mov r8, vm->instructionPointers
 
 	mov_rx_imm32( R_DATAMASK, vm->dataMask );		// mov r11d, vm->dataMask
 	mov_rx_imm32( R_STACKBOTTOM, vm->stackBottom );	// mov r14d, vm->stackBottom
@@ -3737,7 +3741,7 @@ __compile:
 #if idx64
 				emit_jump_index( R_INSPOINTERS, rx[0] );				// jmp qword ptr [instructionPointers + rax*8]
 #else
-				emit_jump_index_offset( (intptr_t) instructionPointers, rx[0] ); // jmp dword ptr [instructionPointers + eax*4]
+				emit_jump_index_offset( (intptr_t) instructionPointers + codeDelta, rx[0] ); // jmp dword ptr [instructionPointers + eax*4]
 #endif
 				unmask_rx( rx[0] );
 				break;
@@ -4423,7 +4427,7 @@ __compile:
 #if idx64
 		litBase = PAD( compiledOfs, 8 ); // RIP-relative
 #else
-		litBase = (intptr_t)(code + PAD( compiledOfs, 8 )); // absolute
+		litBase = (intptr_t)(code + PAD( compiledOfs, 8 )) + codeDelta; // absolute
 #endif
 #else // !USE_LITERAL_POOL
 		code = (byte*)VM_Alloc_Compiled( vm, PAD( compiledOfs, 8 ), n );
@@ -4453,11 +4457,18 @@ __compile:
 	VM_FreeBuffers();
 
 #ifdef __nocturne__
-	// the code was written to read-write pages: they become read-execute
-	if ( n_memory_protect( vm->codeBase.ptr, vm->codeSize, N_MEMORY_READ_EXECUTE ) < 0 ) {
-		VM_Destroy_Compiled( vm );
-		Com_Printf( S_COLOR_WARNING "VM_CompileX86: n_memory_protect failed\n" );
-		return qfalse;
+	// 書ける記憶 code に組んだ全体（コード、literal、instructionPointers）を、カーネルが領域の新しい頁へ写す。
+	{
+		struct n_code_segment text = { .bytes = vm->codeSize, .content = code, .content_bytes = vm->codeSize, .kind = N_CODE_TEXT };
+		struct n_code_install what = { .segments = &text, .segment_count = 1 };
+		n_result installed = n_code_install( vm->codeRegion, &what );
+		free( code );
+		code = NULL;
+		if ( installed < 0 ) {
+			VM_Destroy_Compiled( vm );
+			Com_Printf( S_COLOR_WARNING "VM_CompileX86: n_code_install failed\n" );
+			return qfalse;
+		}
 	}
 #elif defined( VM_X86_MMAP )
 	if ( mprotect( vm->codeBase.ptr, vm->codeSize, PROT_READ|PROT_EXEC ) ) {
@@ -4501,9 +4512,32 @@ static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
 
 	length = codeLength + tableLength;
 #ifdef __nocturne__
-	if ( n_memory_reserve( (size_t)length, N_MEMORY_READ_WRITE, &ptr ) < 0 || !ptr ) {
-		Com_Error( ERR_FATAL, "VM_CompileX86: n_memory_reserve failed" );
-		return NULL;
+	// 実行できる頁はコードの領域だけ（Nocturne の docs/nocturne-native-abi.md §7）。番地を先に取り、組む間は書ける記憶に
+	// 書く：返すのはその記憶で、VM_Compile が組み終えてから領域へ入れる。
+	{
+		void *region = NULL;
+		n_handle handle = -1;
+		if ( n_memory_reserve( (size_t)length, 0, N_MEMORY_NONE, 0, &region ) < 0 ) {
+			Com_Error( ERR_FATAL, "VM_CompileX86: n_memory_reserve failed" );
+			return NULL;
+		}
+		if ( n_code_create( region, (size_t)length, &handle ) < 0 ) {
+			n_memory_release( region, (size_t)length );
+			Com_Error( ERR_FATAL, "VM_CompileX86: n_code_create failed" );
+			return NULL;
+		}
+		ptr = malloc( length );
+		if ( !ptr ) {
+			n_handle_close( handle );
+			Com_Error( ERR_FATAL, "VM_CompileX86: malloc failed" );
+			return NULL;
+		}
+		vm->codeRegion = handle;
+		vm->codeBase.ptr = (byte*)region;
+		vm->codeLength = codeLength;
+		vm->codeSize = length;
+		codeDelta = (intptr_t)region - (intptr_t)ptr;
+		return ptr;
 	}
 #elif defined( VM_X86_MMAP )
 	ptr = mmap( NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0 );
@@ -4542,7 +4576,7 @@ VM_Destroy_Compiled
 static void VM_Destroy_Compiled( vm_t* vm )
 {
 #ifdef __nocturne__
-	n_memory_release( vm->codeBase.ptr, vm->codeSize );
+	n_handle_close( vm->codeRegion );
 #elif defined( VM_X86_MMAP )
 	munmap( vm->codeBase.ptr, vm->codeSize );
 #elif _WIN32

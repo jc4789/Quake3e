@@ -1,6 +1,7 @@
 /*
 ===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
+Copyright (C) Nocturne contributors.
 
 This file is part of Quake III Arena source code.
 
@@ -203,6 +204,9 @@ struct vm_s {
 
 	vmFunc_t	codeBase;
 	unsigned int codeSize;			// code + jump targets, needed for proper munmap()
+#ifdef __nocturne__
+	int			codeRegion;			// codeBase のコードの領域の handle（vm_x86.c）
+#endif
 	unsigned int codeLength;		// just for information
 
 	int32_t		instructionCount;
