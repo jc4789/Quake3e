@@ -723,7 +723,11 @@ FS_AllowedExtension
 */
 qboolean FS_AllowedExtension( const char *fileName, qboolean allowPk3s, const char **ext )
 {
-	static const char *extlist[] = { "dll", "exe", "so", "dylib", "qvm", "pk3" };
+	static const char *extlist[] = { "dll", "exe", "so", "dylib",
+#ifdef __nocturne__
+		"nos", "nlib", "ndrv",
+#endif
+		"qvm", "pk3" };
 	const char *e;
 	int i, n;
 
@@ -5863,7 +5867,6 @@ void FS_PipeClose( fileHandle_t f )
 #endif
 
 
-#ifndef __nocturne__
 /*
 =================
 FS_LoadLibrary
@@ -5871,7 +5874,11 @@ FS_LoadLibrary
 Tries to load libraries within known searchpaths
 =================
 */
+#ifdef __nocturne__
+void *FS_LoadLibrary( const char *name, const char *provider, int major, int minor )
+#else
 void *FS_LoadLibrary( const char *name )
+#endif
 {
 	const searchpath_t *sp = fs_searchpaths;
 	void *libHandle = NULL;
@@ -5882,11 +5889,14 @@ void *FS_LoadLibrary( const char *name )
 		}
 		if ( sp ) {
 			const char *fn = FS_BuildOSPath( sp->dir->path, sp->dir->gamedir, name );
+#ifdef __nocturne__
+			libHandle = Sys_LoadLibrary( fn, provider, major, minor );
+#else
 			libHandle = Sys_LoadLibrary( fn );
+#endif
 			sp = sp->next;
 		}
 	}
 
 	return libHandle;
 }
-#endif

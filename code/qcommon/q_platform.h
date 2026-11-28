@@ -170,6 +170,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define OS_STRING "nocturne"
 #define ID_INLINE inline
 
+// ライブラリーのイメージの拡張子（ネイティブの VM のモジュール、qcommon/vm.c）
+#undef DLL_EXT
+#define DLL_EXT ".NLIB"
+
 #endif // __nocturne__
 
 // =============================== BSD =====================================

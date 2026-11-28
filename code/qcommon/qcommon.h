@@ -890,7 +890,10 @@ const char *FS_GetHomePath( void );
 qboolean FS_StripExt( char *filename, const char *ext );
 qboolean FS_AllowedExtension( const char *fileName, qboolean allowPk3s, const char **ext );
 
-#ifndef __nocturne__
+#ifdef __nocturne__
+// provider、major、minor は Sys_LoadLibrary の契約（nocturne_main.c）。
+void *FS_LoadLibrary( const char *name, const char *provider, int major, int minor );
+#else
 void *FS_LoadLibrary( const char *name );
 #endif
 
@@ -1373,7 +1376,13 @@ qboolean Sys_LowPhysicalMemory( void );
 
 int Sys_MonkeyShouldBeSpanked( void );
 
+#ifdef __nocturne__
+// 呼ぶ側が使う契約（プロバイダー provider の major、要る minor）を名指して読み込み、Sys_LoadFunction はそのプロバイダーの
+// エクスポートを引く。読み込んだイメージは外れない（nocturne_main.c）。
+void *Sys_LoadLibrary( const char *name, const char *provider, int major, int minor );
+#else
 void *Sys_LoadLibrary( const char *name );
+#endif
 void *Sys_LoadFunction( void *handle, const char *name );
 int   Sys_LoadFunctionErrors( void );
 void  Sys_UnloadLibrary( void *handle );

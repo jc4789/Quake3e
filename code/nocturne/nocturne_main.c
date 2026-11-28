@@ -98,6 +98,100 @@ qboolean Sys_LowPhysicalMemory( void )
 }
 
 
+/*
+==================
+Sys_LoadLibrary
+
+Nocturne のライブラリー（.NLIB）は、呼ぶ側が使う契約（プロバイダー provider の major、要る minor）を名指して中核の
+ライブラリーの実装の読み込み（n_image_load）で読み、シンボルはそのプロバイダーのエクスポートから引く。読み込んだ
+イメージはプロセスの終わりまで外れないので、同じ文書をまた読み込めば同じイメージが返り、Sys_UnloadLibrary は何も
+しない。文書からの読み込みなので、実行できる記憶を新しく作る権利の無いプロセスでは読み込めない。
+==================
+*/
+typedef struct nocturneLibrary_s {
+	struct nocturneLibrary_s *next;
+	const struct n_image	*image;
+	char					provider[];		// 引くプロバイダー
+} nocturneLibrary_t;
+
+// 読み込んだライブラリーの記録。イメージと同じくプロセスの終わりまで残り、同じイメージとプロバイダーには同じ記録を返す。
+static nocturneLibrary_t *libraries;
+static int loadFunctionErrors;
+
+void *Sys_LoadLibrary( const char *name, const char *provider, int major, int minor )
+{
+	const struct n_image *image;
+	struct n_link_failure failure;
+	nocturneLibrary_t *library;
+	n_handle document;
+	n_result r;
+	size_t bytes;
+
+	document = n_document_open( name, N_DOCUMENT_READ );
+	if ( document < 0 ) {
+		// 探す道（FS_LoadLibrary）の中の無い文書は失敗として伝えない
+		if ( document != -N_ERR_NOT_FOUND )
+			Com_Printf( "%s を開けない：%s\n", name, n_result_text( document ) );
+		return NULL;
+	}
+	r = n_image_load( document, -1, provider, (uint32_t)major, (uint32_t)minor, &image );
+	n_handle_close( document );
+	if ( r < 0 ) {
+		if ( r == -N_ERR_WRONG_GENERATION )
+			Com_Printf( "%s は契約 %s %d.%d を提供しない\n", name, provider, major, minor );
+		else if ( n_image_failure( &failure ) >= 0 )
+			Com_Printf( "%s を読み込めない：%s（%s の要求 %s %u.%u%s%s）\n", name, n_result_text( r ), failure.image,
+				failure.provider, failure.major, failure.minor, failure.symbol[0] ? " の " : "", failure.symbol );
+		else
+			Com_Printf( "%s を読み込めない：%s\n", name, n_result_text( r ) );
+		return NULL;
+	}
+
+	for ( library = libraries; library; library = library->next ) {
+		if ( library->image == image && !strcmp( library->provider, provider ) )
+			return library;
+	}
+	bytes = strlen( provider ) + 1;
+	library = malloc( sizeof( *library ) + bytes );
+	if ( !library )
+		Com_Error( ERR_FATAL, "Sys_LoadLibrary: 記憶が足りない" );
+	library->image = image;
+	memcpy( library->provider, provider, bytes );
+	library->next = libraries;
+	libraries = library;
+	return library;
+}
+
+
+void *Sys_LoadFunction( void *handle, const char *name )
+{
+	const nocturneLibrary_t *library = handle;
+	void *symbol = n_image_symbol( library->image, library->provider, name );
+
+	if ( !symbol ) {
+		Com_Printf( "Sys_LoadFunction: プロバイダー %s のエクスポート %s が無い\n", library->provider, name );
+		loadFunctionErrors++;
+	}
+	return symbol;
+}
+
+
+int Sys_LoadFunctionErrors( void )
+{
+	int result = loadFunctionErrors;
+
+	loadFunctionErrors = 0;
+	return result;
+}
+
+
+// 何もしない：イメージはプロセスの終わりまで外れない。
+void Sys_UnloadLibrary( void *handle )
+{
+	(void)handle;
+}
+
+
 void Sys_Init( void )
 {
 	Cvar_Set( "arch", OS_STRING " " ARCH_STRING );

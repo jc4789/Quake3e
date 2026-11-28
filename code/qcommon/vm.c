@@ -1750,8 +1750,9 @@ This allows a server to do a map_restart without changing memory allocation
 vm_t *VM_Restart( vm_t *vm ) {
 	vmHeader_t	*header;
 
-#ifndef __nocturne__
 	// DLL's can't be restarted in place
+	// Nocturne：イメージは外れないので、作り直した vm は同じイメージを得て dllEntry をもう一度呼ぶ。モジュールの
+	// 静的な変数は前の値のまま残り、モジュールは初期化の呼び出し（vmMain の *_INIT）で状態を作り直す。
 	if ( vm->dllHandle ) {
 		syscall_t		systemCall;
 		dllSyscall_t	dllSyscall;
@@ -1766,7 +1767,6 @@ vm_t *VM_Restart( vm_t *vm ) {
 		vm = VM_Create( index, systemCall, dllSyscall, VMI_NATIVE );
 		return vm;
 	}
-#endif
 
 	// load the image
 	if( ( header = VM_LoadQVM( vm, qfalse ) ) == NULL ) {
@@ -1783,7 +1783,21 @@ vm_t *VM_Restart( vm_t *vm ) {
 }
 
 
-#ifndef __nocturne__
+#ifdef __nocturne__
+/*
+ネイティブのモジュール（<名>x86_64.NLIB。qagame、cgame、ui）は、契約 VM_NATIVE_PROVIDER の VM_NATIVE_MAJOR を
+VM_NATIVE_MINOR 以上の版で提供するライブラリーで、dllEntry と vmMain をそのプロバイダーでエクスポートする。モジュールは
+一つの翻訳単位で NOS_PROVIDE( "quake3.vm", 1, 0, 0 )（Nocturne の SDK の nos.h）を書き、clang -shared のリンクに
+-Wl,--exports=<一覧>（行は「quake3.vm dllEntry」と「quake3.vm vmMain」）を渡す。呼び出しの形（dllEntry に渡す
+システムコールの関数、vmMain の引数）は上流のネイティブのモジュールと同じ。モジュールの種類ごとの API の版は vmMain の
+*_INIT と GETAPIVERSION が照らすので、契約の版はこの呼び出しの形が変わる時だけ上げる。
+*/
+#define VM_NATIVE_PROVIDER "quake3.vm"
+#define VM_NATIVE_MAJOR 1
+#define VM_NATIVE_MINOR 0
+#endif
+
+
 /*
 =================
 Sys_LoadDll
@@ -1801,7 +1815,11 @@ static void * QDECL VM_LoadDll( const char *name, vmMainFunc_t *entryPoint, dllS
 
 	Com_sprintf( filename, sizeof( filename ), "%s" ARCH_STRING DLL_EXT, name );
 
+#ifdef __nocturne__
+	libHandle = FS_LoadLibrary( filename, VM_NATIVE_PROVIDER, VM_NATIVE_MAJOR, VM_NATIVE_MINOR );
+#else
 	libHandle = FS_LoadLibrary( filename );
+#endif
 
 	if ( !libHandle ) {
 		Com_Printf( "VM_LoadDLL '%s' failed\n", filename );
@@ -1823,7 +1841,6 @@ static void * QDECL VM_LoadDll( const char *name, vmMainFunc_t *entryPoint, dllS
 
 	return libHandle;
 }
-#endif
 
 
 /*
@@ -1869,12 +1886,6 @@ vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscall
 	vm->dllSyscall = dllSyscalls;
 	vm->privateFlag = CVAR_PRIVATE;
 
-#ifdef __nocturne__
-	// native code is not loaded: a program is a bytecode image
-	if ( interpret == VMI_NATIVE ) {
-		interpret = VMI_COMPILED;
-	}
-#else
 	// never allow dll loading with a demo
 	if ( interpret == VMI_NATIVE ) {
 		if ( Cvar_VariableIntegerValue( "fs_restrict" ) ) {
@@ -1897,7 +1908,6 @@ vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscall
 		Com_Printf( "Failed to load dll, looking for qvm.\n" );
 		interpret = VMI_COMPILED;
 	}
-#endif
 
 	// load the image
 	if( ( header = VM_LoadQVM( vm, qtrue ) ) == NULL ) {
@@ -1974,10 +1984,8 @@ void VM_Free( vm_t *vm ) {
 	if ( vm->destroy )
 		vm->destroy( vm );
 
-#ifndef __nocturne__
 	if ( vm->dllHandle )
 		Sys_UnloadLibrary( vm->dllHandle );
-#endif
 
 #if 0	// now automatically freed by hunk
 	if ( vm->codeBase.ptr ) {
@@ -2224,12 +2232,10 @@ static void VM_VmInfo_f( void ) {
 			continue;
 		}
 		Com_Printf( "%s : ", vm->name );
-#ifndef __nocturne__
 		if ( vm->dllHandle ) {
 			Com_Printf( "native\n" );
 			continue;
 		}
-#endif
 		if ( vm->compiled ) {
 			Com_Printf( "compiled on load\n" );
 		} else {

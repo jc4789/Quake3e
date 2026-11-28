@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define WINDOW_TITLE "Quake3e"
 #define FULLSCREEN_WAIT_MS 3000
 
-// vkGetInstanceProcAddr is the loader's, linked into the C library (user/runtime/src/native/vulkan.c).
+// vkGetInstanceProcAddr は Vulkan のローダー（user/runtime/src/native/vulkan.c）の関数で、中核のライブラリー core.NLIB のエクスポート。
 extern PFN_vkVoidFunction vkGetInstanceProcAddr( VkInstance instance, const char *pName );
 
 nocturneWindow_t nwin;
