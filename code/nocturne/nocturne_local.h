@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 typedef struct {
 	window_t	*win;				// NULL until VKimp_Init, and after VKimp_Shutdown
-	int			width, height;		// the window's client size, as of the last EV_RESIZE
+	int			width, height;		// the window's client size, as of the last KABI_EV_RESIZE
 	qboolean	isFullscreen;
 } nocturneWindow_t;
 
@@ -41,4 +41,4 @@ void IN_Frame( void );
 void IN_Shutdown( void );
 
 // Turns one window event into Quake events and window state (HandleEvents calls it for each event win_event gives).
-void Nocturne_WindowEvent( const struct gui_event *e );
+void Nocturne_WindowEvent( const struct kabi_gui_event *e );

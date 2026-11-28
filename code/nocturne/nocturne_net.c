@@ -63,14 +63,14 @@ static uint16_t PortToNet( uint16_t port )
 Address conversion
 ===================
 */
-static void EndpointToNetadr( const struct n_net_endpoint *ep, netadr_t *a )
+static void EndpointToNetadr( const struct kabi_net_endpoint *ep, netadr_t *a )
 {
 	Com_Memset( a, 0, sizeof( *a ) );
 
-	if ( ep->ip.family == N_NET_IPV4 ) {
+	if ( ep->ip.family == KABI_NET_IPV4 ) {
 		a->type = NA_IP;
 		Com_Memcpy( a->ipv._4, ep->ip.bytes, 4 );
-	} else if ( ep->ip.family == N_NET_IPV6 ) {
+	} else if ( ep->ip.family == KABI_NET_IPV6 ) {
 		a->type = NA_IP6;
 		Com_Memcpy( a->ipv._6, ep->ip.bytes, 16 );
 		a->scope_id = ep->ip.zone;
@@ -82,7 +82,7 @@ static void EndpointToNetadr( const struct n_net_endpoint *ep, netadr_t *a )
 }
 
 
-static qboolean NetadrToEndpoint( const netadr_t *a, struct n_net_endpoint *ep )
+static qboolean NetadrToEndpoint( const netadr_t *a, struct kabi_net_endpoint *ep )
 {
 	Com_Memset( ep, 0, sizeof( *ep ) );
 
@@ -91,7 +91,7 @@ static qboolean NetadrToEndpoint( const netadr_t *a, struct n_net_endpoint *ep )
 		ep->ip = n_net_ip_v4( a->ipv._4[0], a->ipv._4[1], a->ipv._4[2], a->ipv._4[3] );
 		break;
 	case NA_IP6:
-		ep->ip.family = N_NET_IPV6;
+		ep->ip.family = KABI_NET_IPV6;
 		Com_Memcpy( ep->ip.bytes, a->ipv._6, 16 );
 		ep->ip.zone = a->scope_id;
 		break;
@@ -116,22 +116,22 @@ Does not parse port numbers, only base addresses.
 */
 qboolean Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 {
-	struct n_net_ip found[MAX_RESOLVED];
-	struct n_dns_result result;
-	struct n_net_endpoint ep;
+	struct kabi_net_ip found[MAX_RESOLVED];
+	struct kabi_dns_result result;
+	struct kabi_net_endpoint ep;
 	uint32_t families = 0;
 	n_result r;
 	int i, pick;
 
 	if ( family == NA_IP )
-		families = N_DNS_FAMILY_IPV4;
+		families = KABI_DNS_FAMILY_IPV4;
 	else if ( family == NA_IP6 )
-		families = N_DNS_FAMILY_IPV6;
+		families = KABI_DNS_FAMILY_IPV6;
 	else {
 		if ( !( net_enabled->integer & NET_ENABLEV4 ) )
-			families = N_DNS_FAMILY_IPV6;
+			families = KABI_DNS_FAMILY_IPV6;
 		else if ( !( net_enabled->integer & NET_ENABLEV6 ) )
-			families = N_DNS_FAMILY_IPV4;
+			families = KABI_DNS_FAMILY_IPV4;
 	}
 
 	Com_Memset( &ep, 0, sizeof( ep ) );
@@ -150,7 +150,7 @@ qboolean Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 	// IPv4 is preferred unless net_enabled asks for IPv6 first (bit 4)
 	pick = -1;
 	for ( i = 0; i < r; i++ ) {
-		qboolean v6 = found[i].family == N_NET_IPV6;
+		qboolean v6 = found[i].family == KABI_NET_IPV6;
 		if ( v6 && !( net_enabled->integer & NET_ENABLEV6 ) )
 			continue;
 		if ( !v6 && !( net_enabled->integer & NET_ENABLEV4 ) )
@@ -240,7 +240,7 @@ qboolean NET_CompareBaseAdr( const netadr_t *a, const netadr_t *b )
 const char *NET_AdrToString( const netadr_t *a )
 {
 	static char s[NET_ADDRSTRMAXLEN];
-	struct n_net_endpoint ep;
+	struct kabi_net_endpoint ep;
 
 	if ( a->type == NA_LOOPBACK )
 		strcpy( s, "loopback" );
@@ -303,7 +303,7 @@ qboolean NET_IsLocalAddress( const netadr_t *adr )
 Local addresses
 ===================
 */
-static int LocalAddresses( struct n_net_address *out, int max )
+static int LocalAddresses( struct kabi_net_address *out, int max )
 {
 	n_result count = n_net_addresses( out, (size_t)max );
 
@@ -313,7 +313,7 @@ static int LocalAddresses( struct n_net_address *out, int max )
 }
 
 
-static qboolean SamePrefix( const struct n_net_ip *a, const struct n_net_ip *b, int bits )
+static qboolean SamePrefix( const struct kabi_net_ip *a, const struct kabi_net_ip *b, int bits )
 {
 	int whole = bits >> 3;
 	int rest = bits & 7;
@@ -340,8 +340,8 @@ LAN clients will have their rate var ignored
 */
 qboolean Sys_IsLANAddress( const netadr_t *adr )
 {
-	struct n_net_address local[MAX_LOCAL_ADDRESSES];
-	struct n_net_endpoint ep;
+	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
+	struct kabi_net_endpoint ep;
 	int i, count;
 
 	if ( adr->type == NA_LOOPBACK )
@@ -385,7 +385,7 @@ Sys_ShowIP
 */
 void Sys_ShowIP( void )
 {
-	struct n_net_address local[MAX_LOCAL_ADDRESSES];
+	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
 	char text[N_NET_IP_TEXT_BYTES];
 	int i, count;
 
@@ -393,7 +393,7 @@ void Sys_ShowIP( void )
 	for ( i = 0; i < count; i++ ) {
 		if ( n_net_ip_format( &local[i].ip, text, sizeof( text ) ) == 0 )
 			continue;
-		if ( local[i].ip.family == N_NET_IPV4 )
+		if ( local[i].ip.family == KABI_NET_IPV4 )
 			Com_Printf( "IP: %s\n", text );
 		else
 			Com_Printf( "IP6: %s\n", text );
@@ -406,28 +406,28 @@ void Sys_ShowIP( void )
 Sys_SendPacket
 ==================
 */
-static void SendTo( const struct n_net_endpoint *to, int length, const void *data, qboolean quiet )
+static void SendTo( const struct kabi_net_endpoint *to, int length, const void *data, qboolean quiet )
 {
 	n_result r = udp_send_to( udpSocket, to, data, (size_t)length );
 
 	// a full send queue drops the packet, as a full socket buffer did
-	if ( r < 0 && r != -N_ERR_NOT_READY && !quiet )
+	if ( r < 0 && r != -KABI_ERR_NOT_READY && !quiet )
 		Com_Printf( "Sys_SendPacket: error %i\n", (int)-r );
 }
 
 
 // A limited broadcast needs the network capability; a program sends to each network's directed broadcast.
-static void SendBroadcast( const struct n_net_endpoint *to, int length, const void *data )
+static void SendBroadcast( const struct kabi_net_endpoint *to, int length, const void *data )
 {
-	struct n_net_address local[MAX_LOCAL_ADDRESSES];
+	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
 	int i, count;
 
 	count = LocalAddresses( local, MAX_LOCAL_ADDRESSES );
 	for ( i = 0; i < count; i++ ) {
-		struct n_net_endpoint target = *to;
+		struct kabi_net_endpoint target = *to;
 		int bits = local[i].prefix, byteIndex;
 
-		if ( local[i].ip.family != N_NET_IPV4 || local[i].state != N_NET_PREFERRED || bits >= 32 )
+		if ( local[i].ip.family != KABI_NET_IPV4 || local[i].state != KABI_NET_PREFERRED || bits >= 32 )
 			continue;
 
 		target.ip = local[i].ip;
@@ -444,7 +444,7 @@ static void SendBroadcast( const struct n_net_endpoint *to, int length, const vo
 
 void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 {
-	struct n_net_endpoint ep;
+	struct kabi_net_endpoint ep;
 
 	switch ( to->type ) {
 	case NA_BROADCAST:
@@ -465,7 +465,7 @@ void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 
 	if ( to->type == NA_BROADCAST ) {
 		Com_Memset( &ep, 0, sizeof( ep ) );
-		ep.ip.family = N_NET_IPV4;
+		ep.ip.family = KABI_NET_IPV4;
 		ep.port = PortToHost( to->port );
 		SendBroadcast( &ep, length, data );
 		return;
@@ -492,14 +492,14 @@ static void NET_Event( void )
 	msg_t netmsg;
 
 	while ( 1 ) {
-		struct n_net_received info;
+		struct kabi_net_received info;
 		n_result r;
 
 		MSG_Init( &netmsg, bufData, MAX_MSGLEN );
 		Com_Memset( &info, 0, sizeof( info ) );
 
 		r = udp_receive_from( udpSocket, netmsg.data, netmsg.maxsize, &info );
-		if ( r == -N_ERR_NOT_READY || r == -N_ERR_CLOSED )
+		if ( r == -KABI_ERR_NOT_READY || r == -KABI_ERR_CLOSED )
 			break;
 		if ( r < 0 )
 			continue; // an error notice for a datagram sent; the socket stays usable
@@ -547,14 +547,14 @@ qboolean NET_Sleep( int timeout )
 	if ( timeout < 0 )
 		timeout = 0;
 
-	deadline = n_clock_after( (uint64_t)timeout * N_NS_PER_US );
+	deadline = n_clock_after( (uint64_t)timeout * KABI_NS_PER_US );
 
 	if ( udpSocket < 0 ) {
 		n_sleep_until( deadline );
 		return qtrue;
 	}
 
-	if ( n_net_wait( udpSocket, N_EVENT_RECEIVABLE, deadline, -1 ) > 0 ) {
+	if ( n_net_wait( udpSocket, KABI_EVENT_RECEIVABLE, deadline, -1 ) > 0 ) {
 		NET_Event();
 		return qfalse;
 	}
@@ -572,8 +572,8 @@ The scan for servers on the local network sends to MULTICAST6_GROUP; a server jo
 */
 static void MulticastMembership( qboolean enter )
 {
-	struct n_net_address local[MAX_LOCAL_ADDRESSES];
-	struct n_net_ip group;
+	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
+	struct kabi_net_ip group;
 	int i, count;
 
 	if ( !n_net_ip_parse( MULTICAST6_GROUP, &group ) )
@@ -581,7 +581,7 @@ static void MulticastMembership( qboolean enter )
 
 	count = LocalAddresses( local, MAX_LOCAL_ADDRESSES );
 	for ( i = 0; i < count; i++ ) {
-		if ( local[i].ip.family == N_NET_IPV6 && n_net_ip_is_link_local( &local[i].ip ) )
+		if ( local[i].ip.family == KABI_NET_IPV6 && n_net_ip_is_link_local( &local[i].ip ) )
 			udp_join( udpSocket, &group, local[i].adapter, enter );
 	}
 }
@@ -623,10 +623,10 @@ static void NET_OpenSocket( void )
 		return;
 
 	for ( i = 0; i < 10; i++ ) {
-		struct n_net_endpoint local;
+		struct kabi_net_endpoint local;
 
 		Com_Memset( &local, 0, sizeof( local ) );
-		local.ip.family = families == NET_ENABLEV4 ? N_NET_IPV4 : families == NET_ENABLEV6 ? N_NET_IPV6 : N_NET_ANY;
+		local.ip.family = families == NET_ENABLEV4 ? KABI_NET_IPV4 : families == NET_ENABLEV6 ? KABI_NET_IPV6 : KABI_NET_ANY;
 		local.port = (uint16_t)( port + i );
 
 		udpSocket = udp_open( &local );

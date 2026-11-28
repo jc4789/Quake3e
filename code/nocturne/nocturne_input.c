@@ -21,9 +21,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-// Nocturne の入力：窓の事象（EV_KEY、EV_MOUSE_*、EV_WHEEL …）を Quake の事象（SE_KEY、SE_CHAR、SE_MOUSE）にする。
-// 鍵は物理の usage（HID の Keyboard page）で K_* に結び、文字は配列で決まった EV_KEY の key（Unicode）から作る。
-// 相対のマウスは窓の指の固定（win_pointer_lock）で、EV_MOUSE_MOVE の dx、dy が装置の生の量になる。
+// Nocturne の入力：窓の事象（KABI_EV_KEY、KABI_EV_MOUSE_*、KABI_EV_WHEEL …）を Quake の事象（SE_KEY、SE_CHAR、SE_MOUSE）にする。
+// 鍵は物理の usage（HID の Keyboard page）で K_* に結び、文字は配列で決まった KABI_EV_KEY の key（Unicode）から作る。
+// 相対のマウスは窓の指の固定（win_pointer_lock）で、KABI_EV_MOUSE_MOVE の dx、dy が装置の生の量になる。
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
@@ -46,7 +46,7 @@ static cvar_t *cl_consoleKeys;
 
 static int in_eventTime;
 static qboolean pointerLockWanted;	// what IN_Frame asked the window for
-static qboolean pointerLocked;		// what EV_POINTER_LOCK last said
+static qboolean pointerLocked;		// what KABI_EV_POINTER_LOCK last said
 static uint32_t heldButtons;
 static int wheelRemainder;
 static uint32_t lastMods;
@@ -79,7 +79,7 @@ static const int usageKeys[0xE8] = {
 	[0xE4] = K_CTRL, [0xE5] = K_SHIFT, [0xE6] = K_ALT, [0xE7] = K_SUPER,
 };
 
-// The mouse buttons in the order of N_BUTTON_* (common/input_abi.h): bit i is button i + 1.
+// The mouse buttons in the order of KABI_BUTTON_* (common/input_abi.h): bit i is button i + 1.
 static const int buttonKeys[] = { K_MOUSE1, K_MOUSE2, K_MOUSE3, K_MOUSE4, K_MOUSE5 };
 
 
@@ -178,7 +178,7 @@ static qboolean IN_IsConsoleKey( keyNum_t key, int character )
 
 static int IN_UsageToKey( uint32_t usage )
 {
-	if ( ( usage >> 16 ) != N_PAGE_KEYBOARD )
+	if ( ( usage >> 16 ) != KABI_PAGE_KEYBOARD )
 		return 0;
 	usage &= 0xffff;
 	return usage < ARRAY_LEN( usageKeys ) ? usageKeys[ usage ] : 0;
@@ -188,10 +188,10 @@ static int IN_UsageToKey( uint32_t usage )
 static void IN_SyncModifiers( uint32_t mods )
 {
 	lastMods = mods;
-	keys[ K_CTRL ].down = ( mods & NMOD_CTRL ) ? qtrue : qfalse;
-	keys[ K_SHIFT ].down = ( mods & NMOD_SHIFT ) ? qtrue : qfalse;
-	keys[ K_ALT ].down = ( mods & NMOD_ALT ) ? qtrue : qfalse;
-	keys[ K_CAPSLOCK ].down = ( mods & NMOD_CAPS ) ? qtrue : qfalse;
+	keys[ K_CTRL ].down = ( mods & KABI_MOD_CTRL ) ? qtrue : qfalse;
+	keys[ K_SHIFT ].down = ( mods & KABI_MOD_SHIFT ) ? qtrue : qfalse;
+	keys[ K_ALT ].down = ( mods & KABI_MOD_ALT ) ? qtrue : qfalse;
+	keys[ K_CAPSLOCK ].down = ( mods & KABI_MOD_CAPS ) ? qtrue : qfalse;
 }
 
 
@@ -202,7 +202,7 @@ Key_CapsLockOn
 */
 qboolean Key_CapsLockOn( void )
 {
-	return ( lastMods & NMOD_CAPS ) ? qtrue : qfalse;
+	return ( lastMods & KABI_MOD_CAPS ) ? qtrue : qfalse;
 }
 
 
@@ -212,7 +212,7 @@ static void IN_QueueKey( int key, qboolean down )
 }
 
 
-static void IN_KeyEvent( const struct gui_event *e )
+static void IN_KeyEvent( const struct kabi_gui_event *e )
 {
 	qboolean down = e->pressed ? qtrue : qfalse;
 	int key = IN_UsageToKey( e->usage );
@@ -239,7 +239,7 @@ static void IN_KeyEvent( const struct gui_event *e )
 		Com_QueueEvent( in_eventTime, SE_CHAR, key, 0, 0, NULL );
 	} else if ( keys[ K_CTRL ].down && key >= 'a' && key <= 'z' ) {
 		Com_QueueEvent( in_eventTime, SE_CHAR, CTRL( key ), 0, 0, NULL );
-	} else if ( key != K_CONSOLE && N_KEY_IS_TEXT( e->key ) && !keys[ K_CTRL ].down ) {
+	} else if ( key != K_CONSOLE && KABI_KEY_IS_TEXT( e->key ) && !keys[ K_CTRL ].down ) {
 		if ( IN_IsConsoleKey( 0, (int)e->key ) ) {
 			IN_QueueKey( K_CONSOLE, qtrue );
 			IN_QueueKey( K_CONSOLE, qfalse );
@@ -283,15 +283,15 @@ static void IN_WheelEvent( int amount )
 	// a positive amount turns the wheel toward the user: the content moves down
 	wheelRemainder += amount;
 
-	while ( wheelRemainder >= N_WHEEL_DETENT ) {
+	while ( wheelRemainder >= KABI_WHEEL_DETENT ) {
 		IN_QueueKey( K_MWHEELDOWN, qtrue );
 		IN_QueueKey( K_MWHEELDOWN, qfalse );
-		wheelRemainder -= N_WHEEL_DETENT;
+		wheelRemainder -= KABI_WHEEL_DETENT;
 	}
-	while ( wheelRemainder <= -N_WHEEL_DETENT ) {
+	while ( wheelRemainder <= -KABI_WHEEL_DETENT ) {
 		IN_QueueKey( K_MWHEELUP, qtrue );
 		IN_QueueKey( K_MWHEELUP, qfalse );
-		wheelRemainder += N_WHEEL_DETENT;
+		wheelRemainder += KABI_WHEEL_DETENT;
 	}
 }
 
@@ -301,62 +301,62 @@ static void IN_WheelEvent( int amount )
 Nocturne_WindowEvent
 ===============
 */
-void Nocturne_WindowEvent( const struct gui_event *e )
+void Nocturne_WindowEvent( const struct kabi_gui_event *e )
 {
 	in_eventTime = Sys_Milliseconds();
 
 	switch ( e->type ) {
-	case EV_KEY:
+	case KABI_EV_KEY:
 		IN_SyncModifiers( e->mods );
 		IN_KeyEvent( e );
 		break;
 
-	case EV_MOUSE_MOVE:
+	case KABI_EV_MOUSE_MOVE:
 		if ( pointerLocked && ( e->dx || e->dy ) )
 			Com_QueueEvent( in_eventTime, SE_MOUSE, e->dx, e->dy, 0, NULL );
 		break;
 
-	case EV_MOUSE_DOWN:
-	case EV_MOUSE_UP:
+	case KABI_EV_MOUSE_DOWN:
+	case KABI_EV_MOUSE_UP:
 		IN_SyncModifiers( e->mods );
 		IN_ButtonsEvent( e->buttons );
 		break;
 
-	case EV_WHEEL:
+	case KABI_EV_WHEEL:
 		IN_WheelEvent( e->wheel_y );
 		break;
 
-	case EV_RESIZE:
+	case KABI_EV_RESIZE:
 		nwin.width = e->x;
 		nwin.height = e->y;
 		break;
 
-	case EV_FOCUS:
+	case KABI_EV_FOCUS:
 		IN_ReleaseAll();
 		gw_active = qtrue;
 		gw_minimized = qfalse;
 		break;
 
-	case EV_UNFOCUS:
+	case KABI_EV_UNFOCUS:
 		IN_ReleaseAll();
 		gw_active = qfalse;
 		// a minimized window is one that was shown and no longer is
-		gw_minimized = ( win_state( nwin.win ) & WIN_STATE_VISIBLE ) ? qfalse : qtrue;
+		gw_minimized = ( win_state( nwin.win ) & KABI_WIN_STATE_VISIBLE ) ? qfalse : qtrue;
 		pointerLocked = qfalse;
 		pointerLockWanted = qfalse;
 		break;
 
-	case EV_POINTER_LOCK:
+	case KABI_EV_POINTER_LOCK:
 		pointerLocked = e->key ? qtrue : qfalse;
 		pointerLockWanted = pointerLocked;
 		break;
 
-	case EV_INPUT_LOST:
+	case KABI_EV_INPUT_LOST:
 		// the keys and buttons held before it are taken as released
 		IN_ReleaseAll();
 		break;
 
-	case EV_CLOSE:
+	case KABI_EV_CLOSE:
 		Cbuf_ExecuteText( EXEC_NOW, "quit Closed window\n" );
 		break;
 
@@ -373,7 +373,7 @@ HandleEvents
 */
 void HandleEvents( void )
 {
-	struct gui_event e;
+	struct kabi_gui_event e;
 	n_result r;
 
 	if ( !nwin.win )
@@ -392,7 +392,7 @@ static void IN_SetPointerLock( qboolean wanted )
 	if ( wanted == pointerLockWanted || !nwin.win )
 		return;
 
-	// the lock is taken by the foreground window with focus; EV_POINTER_LOCK says when it holds
+	// the lock is taken by the foreground window with focus; KABI_EV_POINTER_LOCK says when it holds
 	if ( win_pointer_lock( nwin.win, wanted ? true : false ) >= 0 )
 		pointerLockWanted = wanted;
 }

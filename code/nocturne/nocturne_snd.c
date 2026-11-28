@@ -78,11 +78,11 @@ static void SNDDMA_Pump( void *unused )
 	(void)unused;
 
 	while ( !atomic_load( &pumpStop ) ) {
-		struct n_audio_status status;
+		struct kabi_audio_status status;
 		uint64_t ahead;
 
 		if ( n_audio_status( stream, &status ) < 0 ) {
-			n_sleep_until( n_clock_after( PUMP_SLEEP_MS * N_NS_PER_MS ) );
+			n_sleep_until( n_clock_after( PUMP_SLEEP_MS * KABI_NS_PER_MS ) );
 			continue;
 		}
 
@@ -106,7 +106,7 @@ static void SNDDMA_Pump( void *unused )
 			}
 		}
 
-		n_sleep_until( n_clock_after( PUMP_SLEEP_MS * N_NS_PER_MS ) );
+		n_sleep_until( n_clock_after( PUMP_SLEEP_MS * KABI_NS_PER_MS ) );
 	}
 
 }
@@ -119,7 +119,7 @@ SNDDMA_Init
 */
 qboolean SNDDMA_Init( void )
 {
-	struct n_audio_format format;
+	struct kabi_audio_format format;
 	n_result r;
 
 	if ( snd_inited )
@@ -139,7 +139,7 @@ qboolean SNDDMA_Init( void )
 
 	format.rate = (uint32_t)dma.speed;
 	format.channels = (uint16_t)dma.channels;
-	format.sample = N_AUDIO_S16;
+	format.sample = KABI_AUDIO_S16;
 
 	r = n_audio_open( &format, &stream );
 	if ( r < 0 ) {

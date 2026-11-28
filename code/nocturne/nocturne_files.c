@@ -34,10 +34,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 qboolean Sys_Mkdir( const char *path )
 {
-	struct n_entry entry;
+	struct kabi_entry entry;
 
 	if ( n_entry_info( path, &entry ) >= 0 )
-		return entry.kind == N_KIND_FOLDER ? qtrue : qfalse;
+		return entry.kind == KABI_KIND_FOLDER ? qtrue : qfalse;
 
 	return n_folder_create( path ) >= 0 ? qtrue : qfalse;
 }
@@ -52,9 +52,9 @@ ISO fopen, except that a folder is not a file.
 */
 FILE *Sys_FOpen( const char *ospath, const char *mode )
 {
-	struct n_entry entry;
+	struct kabi_entry entry;
 
-	if ( n_entry_info( ospath, &entry ) >= 0 && entry.kind == N_KIND_FOLDER )
+	if ( n_entry_info( ospath, &entry ) >= 0 && entry.kind == KABI_KIND_FOLDER )
 		return NULL;
 
 	return fopen( ospath, mode );
@@ -130,9 +130,9 @@ Sys_GetFileStats
 */
 qboolean Sys_GetFileStats( const char *filename, fileOffset_t *size, fileTime_t *mtime, fileTime_t *ctime )
 {
-	struct n_entry entry;
+	struct kabi_entry entry;
 
-	if ( n_entry_info( filename, &entry ) >= 0 && entry.kind != N_KIND_FOLDER ) {
+	if ( n_entry_info( filename, &entry ) >= 0 && entry.kind != KABI_KIND_FOLDER ) {
 		*size = (fileOffset_t)entry.size;
 		*mtime = *ctime = (fileTime_t)entry.modified;
 		return qtrue;
@@ -157,7 +157,7 @@ static int Sys_ListExtFiles( const char *directory, const char *subdir, const ch
 	int		extLen;
 	qboolean	hasPatterns;
 	qboolean	dironly;
-	struct n_entry *entries;
+	struct kabi_entry *entries;
 	n_result	count, e;
 
 	if ( extension[0] == '/' && extension[1] == 0 ) {
@@ -185,7 +185,7 @@ static int Sys_ListExtFiles( const char *directory, const char *subdir, const ch
 
 	for ( e = 0; e < count; e++ ) {
 		const char *name = entries[e].name;
-		qboolean isFolder = entries[e].kind == N_KIND_FOLDER ? qtrue : qfalse;
+		qboolean isFolder = entries[e].kind == KABI_KIND_FOLDER ? qtrue : qfalse;
 
 		if ( isFolder ) {
 			// handle recursion

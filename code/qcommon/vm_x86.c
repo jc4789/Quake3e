@@ -4459,8 +4459,8 @@ __compile:
 #ifdef __nocturne__
 	// 書ける記憶 code に組んだ全体（コード、literal、instructionPointers）を、カーネルが領域の新しい頁へ写す。
 	{
-		struct n_code_segment text = { .bytes = vm->codeSize, .content = code, .content_bytes = vm->codeSize, .kind = N_CODE_TEXT };
-		struct n_code_install what = { .segments = &text, .segment_count = 1 };
+		struct kabi_code_segment text = { .bytes = vm->codeSize, .content = code, .content_bytes = vm->codeSize, .kind = KABI_CODE_TEXT };
+		struct kabi_code_install what = { .segments = &text, .segment_count = 1 };
 		n_result installed = n_code_install( vm->codeRegion, &what );
 		free( code );
 		code = NULL;
@@ -4517,7 +4517,7 @@ static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
 	{
 		void *region = NULL;
 		n_handle handle = -1;
-		if ( n_memory_reserve( (size_t)length, 0, N_MEMORY_NONE, 0, &region ) < 0 ) {
+		if ( n_memory_reserve( (size_t)length, 0, KABI_MEMORY_NONE, 0, &region ) < 0 ) {
 			Com_Error( ERR_FATAL, "VM_CompileX86: n_memory_reserve failed" );
 			return NULL;
 		}

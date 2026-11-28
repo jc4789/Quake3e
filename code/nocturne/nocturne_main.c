@@ -46,13 +46,13 @@ static uint64_t ElapsedNs( void )
 
 int Sys_Milliseconds( void )
 {
-	return (int)( ElapsedNs() / N_NS_PER_MS );
+	return (int)( ElapsedNs() / KABI_NS_PER_MS );
 }
 
 
 int64_t Sys_Microseconds( void )
 {
-	return (int64_t)( ElapsedNs() / N_NS_PER_US );
+	return (int64_t)( ElapsedNs() / KABI_NS_PER_US );
 }
 
 
@@ -75,7 +75,7 @@ void Sys_Sleep( int msec )
 	if ( msec == 0 )
 		return;
 
-	n_sleep_until( n_clock_after( (uint64_t)msec * N_NS_PER_MS ) );
+	n_sleep_until( n_clock_after( (uint64_t)msec * KABI_NS_PER_MS ) );
 }
 
 
@@ -110,7 +110,7 @@ Nocturne のライブラリー（.NLIB）は、呼ぶ側が使う契約（プロ
 */
 typedef struct nocturneLibrary_s {
 	struct nocturneLibrary_s *next;
-	const struct n_image	*image;
+	const struct kabi_image	*image;
 	char					provider[];		// 引くプロバイダー
 } nocturneLibrary_t;
 
@@ -120,24 +120,24 @@ static int loadFunctionErrors;
 
 void *Sys_LoadLibrary( const char *name, const char *provider, int major, int minor )
 {
-	const struct n_image *image;
-	struct n_link_failure failure;
+	const struct kabi_image *image;
+	struct kabi_link_failure failure;
 	nocturneLibrary_t *library;
 	n_handle document;
 	n_result r;
 	size_t bytes;
 
-	document = n_document_open( name, N_DOCUMENT_READ );
+	document = n_document_open( name, KABI_DOCUMENT_READ );
 	if ( document < 0 ) {
 		// 探す道（FS_LoadLibrary）の中の無い文書は失敗として伝えない
-		if ( document != -N_ERR_NOT_FOUND )
+		if ( document != -KABI_ERR_NOT_FOUND )
 			Com_Printf( "%s を開けない：%s\n", name, n_result_text( document ) );
 		return NULL;
 	}
 	r = n_image_load( document, -1, provider, (uint32_t)major, (uint32_t)minor, &image );
 	n_handle_close( document );
 	if ( r < 0 ) {
-		if ( r == -N_ERR_WRONG_GENERATION )
+		if ( r == -KABI_ERR_WRONG_GENERATION )
 			Com_Printf( "%s は契約 %s %d.%d を提供しない\n", name, provider, major, minor );
 		else if ( n_image_failure( &failure ) >= 0 )
 			Com_Printf( "%s を読み込めない：%s（%s の要求 %s %u.%u%s%s）\n", name, n_result_text( r ), failure.image,

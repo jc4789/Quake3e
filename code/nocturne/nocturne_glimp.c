@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 // Nocturne の窓と Vulkan の surface。
-// 窓は WIN_FRAME_QUEUE | WIN_APP_SURFACES：面は Vulkan の swapchain が据え（n_vulkan_surface_create）、present は
-// SYS_WIN_SUBMIT になる（common/display_abi.h の窓の節）。全画面の窓の大きさは画面の大きさで、EV_RESIZE が知らせる。
+// 窓は KABI_WIN_FRAME_QUEUE | KABI_WIN_APP_SURFACES：面は Vulkan の swapchain が据え（n_vulkan_surface_create）、present は
+// SYS_WIN_SUBMIT になる（common/display_abi.h の窓の節）。全画面の窓の大きさは画面の大きさで、KABI_EV_RESIZE が知らせる。
 // 全画面の窓は面を直に出すよう頼む（win_direct）。
 
 #include "../qcommon/q_shared.h"
@@ -47,17 +47,17 @@ nocturneWindow_t nwin;
 ===============
 GLW_WaitFullscreenSize
 
-The window system answers a fullscreen request with the screen's size in EV_RESIZE. Other events keep their order.
+The window system answers a fullscreen request with the screen's size in KABI_EV_RESIZE. Other events keep their order.
 ===============
 */
 static qboolean GLW_WaitFullscreenSize( void )
 {
-	uint64_t deadline = n_clock_after( (uint64_t)FULLSCREEN_WAIT_MS * N_NS_PER_MS );
-	struct gui_event e;
+	uint64_t deadline = n_clock_after( (uint64_t)FULLSCREEN_WAIT_MS * KABI_NS_PER_MS );
+	struct kabi_gui_event e;
 
 	while ( win_event( nwin.win, &e, deadline ) > 0 ) {
 		Nocturne_WindowEvent( &e );
-		if ( e.type == EV_RESIZE )
+		if ( e.type == KABI_EV_RESIZE )
 			return qtrue;
 	}
 
@@ -68,7 +68,7 @@ static qboolean GLW_WaitFullscreenSize( void )
 static qboolean GLW_OpenWindow( glconfig_t *config, int mode, const char *modeFS, qboolean fullscreen )
 {
 	int desktopWidth, desktopHeight;
-	unsigned flags = WIN_FRAME_QUEUE | WIN_APP_SURFACES;
+	unsigned flags = KABI_WIN_FRAME_QUEUE | KABI_WIN_APP_SURFACES;
 	n_result r;
 
 	if ( screen_size( &desktopWidth, &desktopHeight ) < 0 ) {
@@ -88,7 +88,7 @@ static qboolean GLW_OpenWindow( glconfig_t *config, int mode, const char *modeFS
 	Com_Printf( " %d %d\n", config->vidWidth, config->vidHeight );
 
 	if ( !fullscreen && r_noborder->integer )
-		flags |= WIN_NO_DECOR;
+		flags |= KABI_WIN_NO_DECOR;
 
 	r = win_open( config->vidWidth, config->vidHeight, WINDOW_TITLE, (int)flags, &nwin.win );
 	if ( r < 0 || !nwin.win ) {
@@ -101,7 +101,7 @@ static qboolean GLW_OpenWindow( glconfig_t *config, int mode, const char *modeFS
 	nwin.height = nwin.win->h;
 	nwin.isFullscreen = qfalse;
 
-	// The window system shows a window with its first present and gives it the focus then (EV_FOCUS):
+	// The window system shows a window with its first present and gives it the focus then (KABI_EV_FOCUS):
 	// a window not yet shown is not a minimized one, and the renderer must draw to make it appear.
 	gw_active = qtrue;
 	gw_minimized = qfalse;
@@ -140,8 +140,8 @@ void VKimp_Init( glconfig_t *config )
 	IN_Init();
 
 	if ( config->isFullscreen ) {
-		// no EV_RESIZE comes when the screen has the size the window had
-		if ( win_fullscreen( nwin.win, true ) >= 0 && ( GLW_WaitFullscreenSize() || ( win_state( nwin.win ) & WIN_STATE_FULLSCREEN ) ) ) {
+		// no KABI_EV_RESIZE comes when the screen has the size the window had
+		if ( win_fullscreen( nwin.win, true ) >= 0 && ( GLW_WaitFullscreenSize() || ( win_state( nwin.win ) & KABI_WIN_STATE_FULLSCREEN ) ) ) {
 			nwin.isFullscreen = qtrue;
 			config->vidWidth = nwin.width;
 			config->vidHeight = nwin.height;
