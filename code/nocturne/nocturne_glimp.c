@@ -140,13 +140,13 @@ void VKimp_Init( glconfig_t *config )
 	config->stereoEnabled = qfalse;
 
 	if ( !GLW_OpenWindow( config, r_mode->integer, r_modeFullscreen->string, r_fullscreen->integer ? qtrue : qfalse ) ) {
-		Com_Printf( "Setting r_mode %d failed, falling back on r_mode %d\n", r_mode->integer, 3 );
+		Com_Printf( "r_mode %d にできないので r_mode %d にする\n", r_mode->integer, 3 );
 
 		if ( !GLW_OpenWindow( config, 3, "", r_fullscreen->integer ? qtrue : qfalse ) )
 			Com_Error( ERR_FATAL, "VKimp_Init() - could not open a window" );
 	}
 
-	// These values force the UI to disable driver selection
+	// この値で UI はドライバーの選びを出さない
 	config->driverType = GLDRV_ICD;
 	config->hardwareType = GLHW_GENERIC;
 
@@ -162,7 +162,7 @@ void VKimp_Init( glconfig_t *config )
 			// 全画面の間、画面の核は合成せずに swapchain の面を画面へ直に出せる。出せない画面では何も変わらない。
 			(void)ui_window_direct( nwin.win, 1 );
 		} else {
-			Com_Printf( "...WARNING: fullscreen unavailable\n" );
+			Com_Printf( "...警告：全画面にできない\n" );
 			config->isFullscreen = qfalse;
 		}
 	}

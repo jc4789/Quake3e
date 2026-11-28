@@ -211,7 +211,7 @@ typedef enum {
 #endif
 
 static	byte     *code;
-// code に書く番地と、組んだコードが走る番地の差。Nocturne では書ける記憶に組んでからコードの領域へ写すので、
+// code に書く番地と、生成したコードが走る番地の差。Nocturne では書ける記憶にコードを生成してからコードの領域へコピーするので、
 // コードに埋める自分の番地（instructionPointers など）にはこの差を足す。ほかの系では 0。
 static	intptr_t codeDelta;
 static	int      compiledOfs;
@@ -4457,7 +4457,7 @@ __compile:
 	VM_FreeBuffers();
 
 #ifdef __nocturne__
-	// 書ける記憶 code に組んだ全体（コード、literal、instructionPointers）を、カーネルが領域の新しい頁へ写す。
+	// 書ける記憶 code に生成した全体（コード、literal、instructionPointers）を、カーネルが領域の新しい頁へコピーする。
 	{
 		const struct n_code_segment text = { .offset = 0, .bytes = vm->codeSize, .content = (size_t)code,
 			.content_bytes = vm->codeSize, .kind = N_CODE_KIND_TEXT };
@@ -4513,8 +4513,8 @@ static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
 
 	length = codeLength + tableLength;
 #ifdef __nocturne__
-	// 実行できる頁はコードの領域だけ（Nocturne の docs/nocturne-native-abi.md §7）。番地を先に取り、組む間は書ける記憶に
-	// 書く：返すのはその記憶で、VM_Compile が組み終えてから領域へ入れる。
+	// 実行できる頁はコードの領域だけ（Nocturne の docs/nocturne-native-abi.md §7）。番地を先に取り、生成する間は書ける記憶に
+	// 書く：返すのはその記憶で、VM_Compile が生成し終えてから領域へ入れる。
 	{
 		n_result region = n_memory_reserve( (size_t)length, 0, N_MEMORY_ACCESS_NONE, 0 );
 		n_code handle;

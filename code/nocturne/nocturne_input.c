@@ -113,7 +113,7 @@ static qboolean IN_IsConsoleKey( keyNum_t key, int character )
 	static int numConsoleKeys = 0;
 	int i;
 
-	// Only parse the variable when it changes
+	// 変数は変わった時だけ読む
 	if ( cl_consoleKeys->modified )
 	{
 		const char *text_p, *token;
@@ -143,7 +143,7 @@ static qboolean IN_IsConsoleKey( keyNum_t key, int character )
 				c->type = QUAKE_KEY;
 				c->u.key = Key_StringToKeynum( token );
 
-				// 0 isn't a key
+				// 0 はキーではない
 				if ( c->u.key <= 0 )
 					continue;
 			}
@@ -152,7 +152,7 @@ static qboolean IN_IsConsoleKey( keyNum_t key, int character )
 		}
 	}
 
-	// If the character is the same as the key, prefer the character
+	// 文字がキーと同じなら文字を先にする
 	if ( key == character )
 		key = 0;
 

@@ -211,7 +211,7 @@ void Sys_Init( void )
 }
 
 
-// single exit point
+// プログラムはここだけで終わる
 void NORETURN Sys_Exit( int code )
 {
 	exit( code );
@@ -273,7 +273,7 @@ int main( int argc, char **argv )
 	size_t len;
 	int i;
 
-	// merge the command line, this is kinda silly
+	// 引数を一行のコマンドラインにつなぐ
 	for ( len = 1, i = 1; i < argc; i++ )
 		len += strlen( argv[i] ) + 1;
 
@@ -294,6 +294,6 @@ int main( int argc, char **argv )
 		Com_Frame( CL_NoDelay() );
 	}
 
-	// never gets here
+	// ここへは来ない
 	return 0;
 }

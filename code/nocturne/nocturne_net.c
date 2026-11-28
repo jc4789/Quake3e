@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-// Nocturne の網：qcommon/net_ip.c の持つ口を、Nocturne の UDP と名前引きの上に置く。
+// Nocturne の網：qcommon/net_ip.c が持つ関数を、Nocturne の UDP と名前引きの上に置く。
 // UDP の socket は一つで、両方の family（IPv4、IPv6）の全部の住所に立つ（nocturne.core の net の udp_open）。
 // 住所が取る port は、netadr_t の約束どおり網の順（BigShort）で持ち、endpoint の port は機械の順。
 
@@ -200,7 +200,7 @@ qboolean Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 ===================
 NET_CompareBaseAdrMask
 
-Compare without port, and up to the bit number given in netmask.
+port を除き、netmask の bit の数まで比べる。
 ===================
 */
 qboolean NET_CompareBaseAdrMask( const netadr_t *a, const netadr_t *b, unsigned int netmask )
@@ -229,7 +229,7 @@ qboolean NET_CompareBaseAdrMask( const netadr_t *a, const netadr_t *b, unsigned 
 			netmask = 128;
 	}
 	else {
-		Com_Printf( "%s: bad address type\n", __func__ );
+		Com_Printf( "%s: 住所の種類が正しくない\n", __func__ );
 		return qfalse;
 	}
 
@@ -280,7 +280,7 @@ const char *NET_AdrToString( const netadr_t *a )
 
 const char *NET_AdrToStringwPort( const netadr_t *a )
 {
-	static char s[NET_ADDRSTRMAXLEN + 8]; // including strlen("[]:65535")
+	static char s[NET_ADDRSTRMAXLEN + 8]; // strlen("[]:65535") を含む
 
 	if ( a->type == NA_LOOPBACK )
 		strcpy( s, "loopback" );
@@ -480,7 +480,7 @@ void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 	case NA_MULTICAST6:
 		break;
 	default:
-		Com_Error( ERR_FATAL, "Sys_SendPacket: bad address type %i", to->type );
+		Com_Error( ERR_FATAL, "Sys_SendPacket: 住所の種類が正しくない %i", to->type );
 		return;
 	}
 
@@ -685,23 +685,23 @@ static qboolean NET_GetCvars( void )
 	// サーバーの IPv6 は所有者が入れる。クライアントは IPv6 だけのホストに届くよう入れておく。
 	net_enabled = Cvar_Get( "net_enabled", com_dedicated && com_dedicated->integer ? "1" : "3",
 		CVAR_LATCH | CVAR_ARCHIVE_ND | CVAR_NORESTART );
-	Cvar_SetDescription( net_enabled, "Networking options, bitmask:\n"
-		" 1 - enable IPv4\n"
-		" 2 - enable IPv6\n"
-		" 4 - prioritize IPv6 connections over IPv4\n"
-		" 8 - disable IPv6 multicast" );
+	Cvar_SetDescription( net_enabled, "ネットワークの設定（bit の組）：\n"
+		" 1 - IPv4 を使う\n"
+		" 2 - IPv6 を使う\n"
+		" 4 - IPv4 より IPv6 の接続を先にする\n"
+		" 8 - IPv6 の multicast を使わない" );
 	Cvar_CheckRange( net_enabled, NULL, NULL, CV_INTEGER );
 	modified = net_enabled->modified;
 	net_enabled->modified = qfalse;
 
 	net_port = Cvar_Get( "net_port", va( "%i", PORT_SERVER ), CVAR_LATCH | CVAR_NORESTART );
 	Cvar_CheckRange( net_port, "0", "65535", CV_INTEGER );
-	Cvar_SetDescription( net_port, "The network port to use." );
+	Cvar_SetDescription( net_port, "使うネットワークの port。" );
 	modified += net_port->modified;
 	net_port->modified = qfalse;
 
 	net_dropsim = Cvar_Get( "net_dropsim", "", CVAR_TEMP );
-	Cvar_SetDescription( net_dropsim, "Simulated packet drops." );
+	Cvar_SetDescription( net_dropsim, "試験のためにパケットを捨てる割合。" );
 
 	return modified ? qtrue : qfalse;
 }
@@ -713,13 +713,13 @@ static void NET_Config( qboolean enableNetworking )
 
 	NET_FlushPacketQueue( -99999 );
 
-	// get any latched changes to cvars
+	// 保留した cvar の変更を読む
 	modified = NET_GetCvars();
 
 	if ( !net_enabled->integer )
 		enableNetworking = qfalse;
 
-	// if enable state is the same and no cvars were modified, we have nothing to do
+	// 有効かどうかが同じで cvar も変わっていなければ、何もしない
 	if ( enableNetworking == networkingEnabled && !modified )
 		return;
 
