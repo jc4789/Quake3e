@@ -31,8 +31,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <nocturne.h>
 #include "nocturne_local.h"
 
-#define APP_DATA_NAME "Quake3e"
-
 
 qboolean Sys_Mkdir( const char *path )
 {
@@ -111,7 +109,7 @@ const char *Sys_DefaultHomePath( void )
 	if ( homePath[0] )
 		return homePath;
 
-	if ( n_app_data_folder( APP_DATA_NAME, homePath, sizeof( homePath ) ) < 0 )
+	if ( n_app_data_folder( homePath, sizeof( homePath ) ) < 0 )
 		homePath[0] = '\0';
 
 	return homePath;
