@@ -205,7 +205,7 @@ struct vm_s {
 	vmFunc_t	codeBase;
 	unsigned int codeSize;			// code + jump targets, needed for proper munmap()
 #ifdef __nocturne__
-	int			codeRegion;			// codeBase のコードの領域の handle（vm_x86.c）
+	int32_t		codeRegion;			// codeBase のコードの領域のハンドルの番号（vm_x86.c）
 #endif
 	unsigned int codeLength;		// just for information
 

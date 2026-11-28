@@ -22,15 +22,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
 // Nocturne の網：qcommon/net_ip.c の持つ口を、Nocturne の UDP と名前引きの上に置く。
-// UDP の socket は一つで、両方の family（IPv4、IPv6）の全部の住所に立つ（common/net_abi.h）。
+// UDP の socket は一つで、両方の family（IPv4、IPv6）の全部の住所に立つ（nocturne.core の net の udp_open）。
 // 住所が取る port は、netadr_t の約束どおり網の順（BigShort）で持ち、endpoint の port は機械の順。
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
 #include "../client/client.h"
 
-#include <nocturne.h>
-#include <nocturne_services.h>
+#include <nocturne/core.h>
 #include "nocturne_local.h"
 
 #define MAX_LOCAL_ADDRESSES 64
@@ -43,7 +42,7 @@ static cvar_t *net_enabled;
 static cvar_t *net_port;
 static cvar_t *net_dropsim;
 
-static n_handle udpSocket = -1;
+static n_udp udpSocket = { -1 };
 static qboolean networkingEnabled = qfalse;
 static qboolean multicastJoined = qfalse;
 
@@ -58,19 +57,40 @@ static uint16_t PortToNet( uint16_t port )
 }
 
 
+// NUL で終わる text が住所の文字なら *ip に読んで真。
+static qboolean ParseIp( const char *text, struct n_net_ip *ip )
+{
+	return n_net_ip_parse( text, strlen( text ), ip ) >= 0 ? qtrue : qfalse;
+}
+
+
+// ip の文字を text に NUL で終えて書く。書けなければ偽で、text は空。
+static qboolean FormatIp( const struct n_net_ip *ip, char *text, size_t capacity )
+{
+	n_result n = n_net_ip_format( ip, text, capacity - 1 );
+
+	if ( n < 0 || (size_t)n >= capacity ) {
+		text[0] = '\0';
+		return qfalse;
+	}
+	text[n] = '\0';
+	return qtrue;
+}
+
+
 /*
 ===================
-Address conversion
+住所の変換
 ===================
 */
-static void EndpointToNetadr( const struct kabi_net_endpoint *ep, netadr_t *a )
+static void EndpointToNetadr( const struct n_net_endpoint *ep, netadr_t *a )
 {
 	Com_Memset( a, 0, sizeof( *a ) );
 
-	if ( ep->ip.family == KABI_NET_IPV4 ) {
+	if ( ep->ip.family == N_NET_FAMILY_IPV4 ) {
 		a->type = NA_IP;
 		Com_Memcpy( a->ipv._4, ep->ip.bytes, 4 );
-	} else if ( ep->ip.family == KABI_NET_IPV6 ) {
+	} else if ( ep->ip.family == N_NET_FAMILY_IPV6 ) {
 		a->type = NA_IP6;
 		Com_Memcpy( a->ipv._6, ep->ip.bytes, 16 );
 		a->scope_id = ep->ip.zone;
@@ -82,21 +102,22 @@ static void EndpointToNetadr( const struct kabi_net_endpoint *ep, netadr_t *a )
 }
 
 
-static qboolean NetadrToEndpoint( const netadr_t *a, struct kabi_net_endpoint *ep )
+static qboolean NetadrToEndpoint( const netadr_t *a, struct n_net_endpoint *ep )
 {
 	Com_Memset( ep, 0, sizeof( *ep ) );
 
 	switch ( a->type ) {
 	case NA_IP:
-		ep->ip = n_net_ip_v4( a->ipv._4[0], a->ipv._4[1], a->ipv._4[2], a->ipv._4[3] );
+		ep->ip.family = N_NET_FAMILY_IPV4;
+		Com_Memcpy( ep->ip.bytes, a->ipv._4, 4 );
 		break;
 	case NA_IP6:
-		ep->ip.family = KABI_NET_IPV6;
+		ep->ip.family = N_NET_FAMILY_IPV6;
 		Com_Memcpy( ep->ip.bytes, a->ipv._6, 16 );
 		ep->ip.zone = a->scope_id;
 		break;
 	case NA_MULTICAST6:
-		if ( !n_net_ip_parse( MULTICAST6_GROUP, &ep->ip ) )
+		if ( !ParseIp( MULTICAST6_GROUP, &ep->ip ) )
 			return qfalse;
 		break;
 	default:
@@ -111,46 +132,47 @@ static qboolean NetadrToEndpoint( const netadr_t *a, struct kabi_net_endpoint *e
 =============
 Sys_StringToAdr
 
-Does not parse port numbers, only base addresses.
+port の番号は読まず、住所だけを読む。
 =============
 */
 qboolean Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 {
-	struct kabi_net_ip found[MAX_RESOLVED];
-	struct kabi_dns_result result;
-	struct kabi_net_endpoint ep;
-	uint32_t families = 0;
+	struct n_net_ip found[MAX_RESOLVED];
+	struct n_dns_result result = { .bytes = sizeof( result ) };
+	struct n_net_endpoint ep;
+	n_dns_family families = 0;
 	n_result r;
 	int i, pick;
 
 	if ( family == NA_IP )
-		families = KABI_DNS_FAMILY_IPV4;
+		families = N_DNS_FAMILY_IPV4;
 	else if ( family == NA_IP6 )
-		families = KABI_DNS_FAMILY_IPV6;
+		families = N_DNS_FAMILY_IPV6;
 	else {
 		if ( !( net_enabled->integer & NET_ENABLEV4 ) )
-			families = KABI_DNS_FAMILY_IPV6;
+			families = N_DNS_FAMILY_IPV6;
 		else if ( !( net_enabled->integer & NET_ENABLEV6 ) )
-			families = KABI_DNS_FAMILY_IPV4;
+			families = N_DNS_FAMILY_IPV4;
 	}
 
 	Com_Memset( &ep, 0, sizeof( ep ) );
-	if ( n_net_ip_parse( s, &ep.ip ) ) {
+	if ( ParseIp( s, &ep.ip ) ) {
 		found[0] = ep.ip;
 		r = 1;
 	} else {
-		r = net_resolve( s, families, found, MAX_RESOLVED, &result, NULL, -1 );
+		r = n_net_resolve( s, strlen( s ), families, NULL, N_CLOCK_NEVER, NULL, 0, found, MAX_RESOLVED, &result );
 		if ( r < 0 ) {
-			Com_Printf( "%s: Error resolving %s\n", __func__, s );
+			Com_Printf( "%s: %s の名前を引けない\n", __func__, s );
 			return qfalse;
 		}
-		r = result.count < MAX_RESOLVED ? result.count : MAX_RESOLVED;
+		if ( r > MAX_RESOLVED )
+			r = MAX_RESOLVED;
 	}
 
-	// IPv4 is preferred unless net_enabled asks for IPv6 first (bit 4)
+	// net_enabled が IPv6 を先にする（bit 4）のでなければ IPv4 を選ぶ
 	pick = -1;
 	for ( i = 0; i < r; i++ ) {
-		qboolean v6 = found[i].family == KABI_NET_IPV6;
+		qboolean v6 = found[i].family == N_NET_FAMILY_IPV6;
 		if ( v6 && !( net_enabled->integer & NET_ENABLEV6 ) )
 			continue;
 		if ( !v6 && !( net_enabled->integer & NET_ENABLEV4 ) )
@@ -163,7 +185,7 @@ qboolean Sys_StringToAdr( const char *s, netadr_t *a, netadrtype_t family )
 	}
 
 	if ( pick < 0 ) {
-		Com_Printf( "%s: Error resolving %s: No address of required type found.\n", __func__, s );
+		Com_Printf( "%s: %s の名前を引けない：求める種類の住所が無い\n", __func__, s );
 		return qfalse;
 	}
 
@@ -240,15 +262,14 @@ qboolean NET_CompareBaseAdr( const netadr_t *a, const netadr_t *b )
 const char *NET_AdrToString( const netadr_t *a )
 {
 	static char s[NET_ADDRSTRMAXLEN];
-	struct kabi_net_endpoint ep;
+	struct n_net_endpoint ep;
 
 	if ( a->type == NA_LOOPBACK )
 		strcpy( s, "loopback" );
 	else if ( a->type == NA_BOT )
 		strcpy( s, "bot" );
 	else if ( NetadrToEndpoint( a, &ep ) ) {
-		if ( n_net_ip_format( &ep.ip, s, sizeof( s ) ) == 0 )
-			s[0] = '\0';
+		FormatIp( &ep.ip, s, sizeof( s ) );
 	}
 	else
 		s[0] = '\0';
@@ -300,20 +321,26 @@ qboolean NET_IsLocalAddress( const netadr_t *adr )
 
 /*
 ===================
-Local addresses
+この機械の住所
 ===================
 */
-static int LocalAddresses( struct kabi_net_address *out, int max )
+static int LocalAddresses( struct n_net_address *out, int max )
 {
-	n_result count = n_net_addresses( out, (size_t)max );
+	n_result count;
+	int i;
 
+	for ( i = 0; i < max; i++ ) {
+		Com_Memset( &out[i], 0, sizeof( out[i] ) );
+		out[i].bytes = sizeof( out[i] );
+	}
+	count = n_net_addresses( out, (size_t)max, sizeof( out[0] ) );
 	if ( count < 0 )
 		return 0;
 	return count < max ? (int)count : max;
 }
 
 
-static qboolean SamePrefix( const struct kabi_net_ip *a, const struct kabi_net_ip *b, int bits )
+static qboolean SamePrefix( const struct n_net_ip *a, const struct n_net_ip *b, int bits )
 {
 	int whole = bits >> 3;
 	int rest = bits & 7;
@@ -335,20 +362,20 @@ static qboolean SamePrefix( const struct kabi_net_ip *a, const struct kabi_net_i
 ==================
 Sys_IsLANAddress
 
-LAN clients will have their rate var ignored
+LAN のクライアントには rate の変数を使わない。
 ==================
 */
 qboolean Sys_IsLANAddress( const netadr_t *adr )
 {
-	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
-	struct kabi_net_endpoint ep;
+	struct n_net_address local[MAX_LOCAL_ADDRESSES];
+	struct n_net_endpoint ep;
 	int i, count;
 
 	if ( adr->type == NA_LOOPBACK )
 		return qtrue;
 
 	if ( adr->type == NA_IP ) {
-		// RFC1918 and the loopback network
+		// RFC 1918 の網と loopback の網
 		if ( adr->ipv._4[0] == 10 )
 			return qtrue;
 		if ( adr->ipv._4[0] == 172 && ( adr->ipv._4[1] & 0xf0 ) == 16 )
@@ -385,15 +412,15 @@ Sys_ShowIP
 */
 void Sys_ShowIP( void )
 {
-	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
-	char text[N_NET_IP_TEXT_BYTES];
+	struct n_net_address local[MAX_LOCAL_ADDRESSES];
+	char text[N_NET_IP_TEXT_MAX + 1];
 	int i, count;
 
 	count = LocalAddresses( local, MAX_LOCAL_ADDRESSES );
 	for ( i = 0; i < count; i++ ) {
-		if ( n_net_ip_format( &local[i].ip, text, sizeof( text ) ) == 0 )
+		if ( !FormatIp( &local[i].ip, text, sizeof( text ) ) )
 			continue;
-		if ( local[i].ip.family == KABI_NET_IPV4 )
+		if ( local[i].ip.family == N_NET_FAMILY_IPV4 )
 			Com_Printf( "IP: %s\n", text );
 		else
 			Com_Printf( "IP6: %s\n", text );
@@ -406,28 +433,28 @@ void Sys_ShowIP( void )
 Sys_SendPacket
 ==================
 */
-static void SendTo( const struct kabi_net_endpoint *to, int length, const void *data, qboolean quiet )
+static void SendTo( const struct n_net_endpoint *to, int length, const void *data, qboolean quiet )
 {
-	n_result r = udp_send_to( udpSocket, to, data, (size_t)length );
+	n_result r = n_udp_send( udpSocket, to, data, (size_t)length );
 
-	// a full send queue drops the packet, as a full socket buffer did
-	if ( r < 0 && r != -KABI_ERR_NOT_READY && !quiet )
-		Com_Printf( "Sys_SendPacket: error %i\n", (int)-r );
+	// 送りの量が上限ならパケットを捨てる
+	if ( r < 0 && r != -N_ERR_NOT_READY && !quiet )
+		Com_Printf( "Sys_SendPacket: 誤り %i\n", (int)-r );
 }
 
 
-// A limited broadcast needs the network capability; a program sends to each network's directed broadcast.
-static void SendBroadcast( const struct kabi_net_endpoint *to, int length, const void *data )
+// 網の全体への broadcast はネットワークのケイパビリティが要るので、プログラムは網ごとの directed broadcast へ送る。
+static void SendBroadcast( const struct n_net_endpoint *to, int length, const void *data )
 {
-	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
+	struct n_net_address local[MAX_LOCAL_ADDRESSES];
 	int i, count;
 
 	count = LocalAddresses( local, MAX_LOCAL_ADDRESSES );
 	for ( i = 0; i < count; i++ ) {
-		struct kabi_net_endpoint target = *to;
+		struct n_net_endpoint target = *to;
 		int bits = local[i].prefix, byteIndex;
 
-		if ( local[i].ip.family != KABI_NET_IPV4 || local[i].state != KABI_NET_PREFERRED || bits >= 32 )
+		if ( local[i].ip.family != N_NET_FAMILY_IPV4 || local[i].state != N_NET_ADDRESS_STATE_PREFERRED || bits >= 32 )
 			continue;
 
 		target.ip = local[i].ip;
@@ -444,7 +471,7 @@ static void SendBroadcast( const struct kabi_net_endpoint *to, int length, const
 
 void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 {
-	struct kabi_net_endpoint ep;
+	struct n_net_endpoint ep;
 
 	switch ( to->type ) {
 	case NA_BROADCAST:
@@ -457,7 +484,7 @@ void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 		return;
 	}
 
-	if ( udpSocket < 0 )
+	if ( udpSocket.handle < 0 )
 		return;
 
 	if ( to->type == NA_MULTICAST6 && ( net_enabled->integer & NET_DISABLEMCAST ) )
@@ -465,7 +492,7 @@ void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 
 	if ( to->type == NA_BROADCAST ) {
 		Com_Memset( &ep, 0, sizeof( ep ) );
-		ep.ip.family = KABI_NET_IPV4;
+		ep.ip.family = N_NET_FAMILY_IPV4;
 		ep.port = PortToHost( to->port );
 		SendBroadcast( &ep, length, data );
 		return;
@@ -482,7 +509,7 @@ void Sys_SendPacket( int length, const void *data, const netadr_t *to )
 ==================
 NET_Event
 
-Delivers every datagram that waits on the socket.
+socket に着いて待っている datagram を全部渡す。
 ==================
 */
 static void NET_Event( void )
@@ -492,21 +519,22 @@ static void NET_Event( void )
 	msg_t netmsg;
 
 	while ( 1 ) {
-		struct kabi_net_received info;
+		struct n_udp_received info;
 		n_result r;
 
 		MSG_Init( &netmsg, bufData, MAX_MSGLEN );
 		Com_Memset( &info, 0, sizeof( info ) );
+		info.bytes = sizeof( info );
 
-		r = udp_receive_from( udpSocket, netmsg.data, netmsg.maxsize, &info );
-		if ( r == -KABI_ERR_NOT_READY || r == -KABI_ERR_CLOSED )
+		r = n_udp_receive( udpSocket, netmsg.data, (size_t)netmsg.maxsize, &info );
+		if ( r == -N_ERR_NOT_READY || r == -N_ERR_CLOSED )
 			break;
 		if ( r < 0 )
-			continue; // an error notice for a datagram sent; the socket stays usable
+			continue; // 送った datagram への誤りの知らせ。socket はそのまま使える
 
 		if ( r >= netmsg.maxsize ) {
 			EndpointToNetadr( &info.from, &from );
-			Com_Printf( "Oversize packet from %s\n", NET_AdrToString( &from ) );
+			Com_Printf( "%s から大きすぎるパケット\n", NET_AdrToString( &from ) );
 			continue;
 		}
 
@@ -518,7 +546,7 @@ static void NET_Event( void )
 		netmsg.readcount = 0;
 
 		if ( net_dropsim->value > 0.0f && net_dropsim->value <= 100.0f ) {
-			// net_dropsim percent of incoming packets get dropped
+			// 着いたパケットの net_dropsim パーセントを捨てる
 			if ( rand() < (int) ( ( (double) RAND_MAX ) / 100.0 * (double) net_dropsim->value ) )
 				continue;
 		}
@@ -535,9 +563,9 @@ static void NET_Event( void )
 ====================
 NET_Sleep
 
-Sleeps msec or until something happens on the network
+timeout マイクロ秒か、網に何かが着くまで止まる。
 
-Returns qfalse on network event or qtrue in all other cases
+網に着けば qfalse、ほかは qtrue を返す。
 ====================
 */
 qboolean NET_Sleep( int timeout )
@@ -547,14 +575,14 @@ qboolean NET_Sleep( int timeout )
 	if ( timeout < 0 )
 		timeout = 0;
 
-	deadline = n_clock_after( (uint64_t)timeout * KABI_NS_PER_US );
+	deadline = n_clock_after( (uint64_t)timeout * 1000 );
 
-	if ( udpSocket < 0 ) {
+	if ( udpSocket.handle < 0 ) {
 		n_sleep_until( deadline );
 		return qtrue;
 	}
 
-	if ( n_net_wait( udpSocket, KABI_EVENT_RECEIVABLE, deadline, -1 ) > 0 ) {
+	if ( n_net_wait( (n_handle){ udpSocket.handle }, N_EVENT_RECEIVABLE, deadline, NULL, 0 ) > 0 ) {
 		NET_Event();
 		return qfalse;
 	}
@@ -567,29 +595,29 @@ qboolean NET_Sleep( int timeout )
 ====================
 IPv6 multicast
 
-The scan for servers on the local network sends to MULTICAST6_GROUP; a server joins it on every adapter.
+LAN のサーバーの探しは MULTICAST6_GROUP へ送り、サーバーは全部の adapter でその群に入る。
 ====================
 */
 static void MulticastMembership( qboolean enter )
 {
-	struct kabi_net_address local[MAX_LOCAL_ADDRESSES];
-	struct kabi_net_ip group;
+	struct n_net_address local[MAX_LOCAL_ADDRESSES];
+	struct n_net_ip group;
 	int i, count;
 
-	if ( !n_net_ip_parse( MULTICAST6_GROUP, &group ) )
+	if ( !ParseIp( MULTICAST6_GROUP, &group ) )
 		return;
 
 	count = LocalAddresses( local, MAX_LOCAL_ADDRESSES );
 	for ( i = 0; i < count; i++ ) {
-		if ( local[i].ip.family == KABI_NET_IPV6 && n_net_ip_is_link_local( &local[i].ip ) )
-			udp_join( udpSocket, &group, local[i].adapter, enter );
+		if ( local[i].ip.family == N_NET_FAMILY_IPV6 && n_net_ip_is_link_local( &local[i].ip ) > 0 )
+			n_udp_join( udpSocket, &group, local[i].adapter, enter ? 1 : 0 );
 	}
 }
 
 
 void NET_JoinMulticast6( void )
 {
-	if ( udpSocket < 0 || multicastJoined || ( net_enabled->integer & NET_DISABLEMCAST ) )
+	if ( udpSocket.handle < 0 || multicastJoined || ( net_enabled->integer & NET_DISABLEMCAST ) )
 		return;
 
 	MulticastMembership( qtrue );
@@ -599,7 +627,7 @@ void NET_JoinMulticast6( void )
 
 void NET_LeaveMulticast6( void )
 {
-	if ( udpSocket < 0 || !multicastJoined )
+	if ( udpSocket.handle < 0 || !multicastJoined )
 		return;
 
 	MulticastMembership( qfalse );
@@ -611,7 +639,7 @@ void NET_LeaveMulticast6( void )
 ====================
 NET_OpenSocket
 
-Scans for a free port, so several servers can start without a different net_port each.
+空いた port を探すので、幾つものサーバーをそれぞれ別の net_port なしで起動できる。
 ====================
 */
 static void NET_OpenSocket( void )
@@ -623,30 +651,29 @@ static void NET_OpenSocket( void )
 		return;
 
 	for ( i = 0; i < 10; i++ ) {
-		struct kabi_net_endpoint local;
+		struct n_net_endpoint local;
 
 		Com_Memset( &local, 0, sizeof( local ) );
-		local.ip.family = families == NET_ENABLEV4 ? KABI_NET_IPV4 : families == NET_ENABLEV6 ? KABI_NET_IPV6 : KABI_NET_ANY;
+		local.ip.family = families == NET_ENABLEV4 ? N_NET_FAMILY_IPV4 : families == NET_ENABLEV6 ? N_NET_FAMILY_IPV6 : N_NET_FAMILY_ANY;
 		local.port = (uint16_t)( port + i );
 
-		udpSocket = udp_open( &local );
-		if ( udpSocket >= 0 ) {
+		if ( n_udp_open( &local, &udpSocket ) >= 0 ) {
 			Cvar_SetIntegerValue( "net_port", port + i );
 			return;
 		}
-		udpSocket = -1;
+		udpSocket.handle = -1;
 	}
 
-	Com_Printf( "WARNING: Couldn't open a UDP socket.\n" );
+	Com_Printf( "警告：UDP の socket を開けない\n" );
 }
 
 
 static void NET_CloseSocket( void )
 {
-	if ( udpSocket >= 0 ) {
+	if ( udpSocket.handle >= 0 ) {
 		multicastJoined = qfalse;
-		n_handle_close( udpSocket );
-		udpSocket = -1;
+		n_handle_close( (n_handle){ udpSocket.handle } );
+		udpSocket.handle = -1;
 	}
 }
 
@@ -655,7 +682,7 @@ static qboolean NET_GetCvars( void )
 {
 	int modified;
 
-	// A server's owner turns IPv6 on; a client has it so it can reach IPv6-only hosts.
+	// サーバーの IPv6 は所有者が入れる。クライアントは IPv6 だけのホストに届くよう入れておく。
 	net_enabled = Cvar_Get( "net_enabled", com_dedicated && com_dedicated->integer ? "1" : "3",
 		CVAR_LATCH | CVAR_ARCHIVE_ND | CVAR_NORESTART );
 	Cvar_SetDescription( net_enabled, "Networking options, bitmask:\n"

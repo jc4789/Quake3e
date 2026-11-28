@@ -20,15 +20,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
 
-// The Nocturne platform layer: what the window (nocturne_glimp.c) and the input (nocturne_input.c) share.
+// Nocturne の層：窓（nocturne_glimp.c）と入力（nocturne_input.c）が分け合うもの。
 
 #pragma once
 
-#include <nocturne.h>
+#include <nocturne/core.h>
+#include <nocturne/ui.h>
 
 typedef struct {
-	window_t	*win;				// NULL until VKimp_Init, and after VKimp_Shutdown
-	int			width, height;		// the window's client size, as of the last KABI_EV_RESIZE
+	struct ui_window	*win;		// VKimp_Init の前と VKimp_Shutdown の後は NULL
+	int			width, height;		// 最後の UI_EVENT_KIND_RESIZE が言った窓の客の面の大きさ
 	qboolean	isFullscreen;
 } nocturneWindow_t;
 
@@ -40,5 +41,5 @@ void IN_Init( void );
 void IN_Frame( void );
 void IN_Shutdown( void );
 
-// Turns one window event into Quake events and window state (HandleEvents calls it for each event win_event gives).
-void Nocturne_WindowEvent( const struct kabi_gui_event *e );
+// 窓の事象一つを Quake の事象と窓の状態にする（HandleEvents が ui_window_event の事象ごとに呼ぶ）。
+void Nocturne_WindowEvent( const struct ui_event *e );

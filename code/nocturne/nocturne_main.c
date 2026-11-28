@@ -27,10 +27,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/qcommon.h"
 #include "../client/client.h"
 
-#include <nocturne.h>
+#include <nocturne/core.h>
 #include "nocturne_local.h"
 
-// Time since the first call, from the monotonic clock.
+// 初めて呼んだ時からの時間（単調な時計）。
 static uint64_t timeBase;
 
 static uint64_t ElapsedNs( void )
@@ -46,13 +46,13 @@ static uint64_t ElapsedNs( void )
 
 int Sys_Milliseconds( void )
 {
-	return (int)( ElapsedNs() / KABI_NS_PER_MS );
+	return (int)( ElapsedNs() / 1000000 );
 }
 
 
 int64_t Sys_Microseconds( void )
 {
-	return (int64_t)( ElapsedNs() / KABI_NS_PER_US );
+	return (int64_t)( ElapsedNs() / 1000 );
 }
 
 
@@ -60,13 +60,13 @@ int64_t Sys_Microseconds( void )
 ==================
 Sys_Sleep
 
-Block execution for msec; a negative msec waits for a network packet.
+msec ミリ秒止まる。負の msec はネットワークのパケットを待つ。
 ==================
 */
 void Sys_Sleep( int msec )
 {
 	if ( msec < 0 ) {
-		// reached only by a dedicated server with no map loaded
+		// マップを読んでいない専用サーバーだけがここへ来る
 		while ( NET_Sleep( 3000 * 1000 ) )
 			;
 		return;
@@ -75,7 +75,7 @@ void Sys_Sleep( int msec )
 	if ( msec == 0 )
 		return;
 
-	n_sleep_until( n_clock_after( (uint64_t)msec * KABI_NS_PER_MS ) );
+	n_sleep_until( n_clock_after( (uint64_t)msec * 1000000 ) );
 }
 
 
@@ -91,7 +91,7 @@ qboolean Sys_RandomBytes( byte *string, int len )
 }
 
 
-// The floor of the machines Nocturne runs on is far above the 64 MB this asks about.
+// Nocturne が動く機械の下限は、ここで問う 64 MB よりずっと大きい。
 qboolean Sys_LowPhysicalMemory( void )
 {
 	return qfalse;
@@ -110,9 +110,18 @@ Nocturne のライブラリー（.NLIB）は、呼ぶ側が使う契約（プロ
 */
 typedef struct nocturneLibrary_s {
 	struct nocturneLibrary_s *next;
-	const struct kabi_image	*image;
+	size_t					base;			// イメージのベース
 	char					provider[];		// 引くプロバイダー
 } nocturneLibrary_t;
+
+// 結果コード r の文を text に NUL で終えて書く。
+static const char *ResultText( n_result r, char *text, size_t capacity )
+{
+	n_result n = n_result_text( r, text, capacity - 1 );
+
+	text[ n < 0 ? 0 : (size_t)n >= capacity ? capacity - 1 : (size_t)n ] = '\0';
+	return text;
+}
 
 // 読み込んだライブラリーの記録。イメージと同じくプロセスの終わりまで残り、同じイメージとプロバイダーには同じ記録を返す。
 static nocturneLibrary_t *libraries;
@@ -120,42 +129,44 @@ static int loadFunctionErrors;
 
 void *Sys_LoadLibrary( const char *name, const char *provider, int major, int minor )
 {
-	const struct kabi_image *image;
-	struct kabi_link_failure failure;
+	struct n_image image = { .bytes = sizeof( image ) };
+	struct n_link_failure failure = { .bytes = sizeof( failure ) };
 	nocturneLibrary_t *library;
-	n_handle document;
+	n_document document;
+	char why[ 256 ];
 	n_result r;
-	size_t bytes;
+	size_t bytes = strlen( provider );
 
-	document = n_document_open( name, KABI_DOCUMENT_READ );
-	if ( document < 0 ) {
+	r = n_document_open( name, strlen( name ), N_DOCUMENT_ACCESS_READ, &document );
+	if ( r < 0 ) {
 		// 探す道（FS_LoadLibrary）の中の無い文書は失敗として伝えない
-		if ( document != -KABI_ERR_NOT_FOUND )
-			Com_Printf( "%s を開けない：%s\n", name, n_result_text( document ) );
+		if ( r != -N_ERR_NOT_FOUND )
+			Com_Printf( "%s を開けない：%s\n", name, ResultText( r, why, sizeof( why ) ) );
 		return NULL;
 	}
-	r = n_image_load( document, -1, provider, (uint32_t)major, (uint32_t)minor, &image );
-	n_handle_close( document );
+	r = n_image_load( document, (n_handle){ -1 }, provider, bytes, (uint32_t)major, (uint32_t)minor, &image );
+	n_handle_close( (n_handle){ document.handle } );
 	if ( r < 0 ) {
-		if ( r == -KABI_ERR_WRONG_GENERATION )
+		if ( r == -N_ERR_WRONG_GENERATION )
 			Com_Printf( "%s は契約 %s %d.%d を提供しない\n", name, provider, major, minor );
 		else if ( n_image_failure( &failure ) >= 0 )
-			Com_Printf( "%s を読み込めない：%s（%s の要求 %s %u.%u%s%s）\n", name, n_result_text( r ), failure.image,
-				failure.provider, failure.major, failure.minor, failure.symbol[0] ? " の " : "", failure.symbol );
+			Com_Printf( "%s を読み込めない：%s（%s の要求 %s %u.%u%s%s）\n", name, ResultText( r, why, sizeof( why ) ),
+				failure.image, failure.provider, failure.major, failure.minor, failure.symbol[0] ? " の " : "",
+				failure.symbol );
 		else
-			Com_Printf( "%s を読み込めない：%s\n", name, n_result_text( r ) );
+			Com_Printf( "%s を読み込めない：%s\n", name, ResultText( r, why, sizeof( why ) ) );
 		return NULL;
 	}
 
 	for ( library = libraries; library; library = library->next ) {
-		if ( library->image == image && !strcmp( library->provider, provider ) )
+		if ( library->base == image.base && !strcmp( library->provider, provider ) )
 			return library;
 	}
-	bytes = strlen( provider ) + 1;
+	bytes++;
 	library = malloc( sizeof( *library ) + bytes );
 	if ( !library )
 		Com_Error( ERR_FATAL, "Sys_LoadLibrary: 記憶が足りない" );
-	library->image = image;
+	library->base = image.base;
 	memcpy( library->provider, provider, bytes );
 	library->next = libraries;
 	libraries = library;
@@ -166,7 +177,9 @@ void *Sys_LoadLibrary( const char *name, const char *provider, int major, int mi
 void *Sys_LoadFunction( void *handle, const char *name )
 {
 	const nocturneLibrary_t *library = handle;
-	void *symbol = n_image_symbol( library->image, library->provider, name );
+	n_result address = n_image_symbol( library->base, library->provider, strlen( library->provider ), name,
+		strlen( name ) );
+	void *symbol = address < 0 ? NULL : (void *)(size_t)address;
 
 	if ( !symbol ) {
 		Com_Printf( "Sys_LoadFunction: プロバイダー %s のエクスポート %s が無い\n", library->provider, name );
@@ -234,7 +247,7 @@ void NORETURN FORMAT_PRINTF(1, 2) QDECL Sys_Error( const char *format, ... )
 ==================
 Sys_Print
 
-The log of the program (stderr), without the control characters of the color codes.
+プログラムのログ（stderr）。色のコードの制御文字は除く。
 ==================
 */
 void Sys_Print( const char *msg )

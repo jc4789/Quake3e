@@ -28,18 +28,56 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
 
-#include <nocturne.h>
+#include <nocturne/core.h>
 #include "nocturne_local.h"
+
+
+// path の項の記録を entry に読む。項が無ければ偽。
+static qboolean EntryInfo( const char *path, struct n_entry *entry )
+{
+	memset( entry, 0, sizeof( *entry ) );
+	entry->bytes = sizeof( *entry );
+	return n_entry_info( path, strlen( path ), entry ) >= 0 ? qtrue : qfalse;
+}
+
+
+// path のフォルダーの項の全部を malloc した配列に読み、数を返す（失敗は負）。数を聞いてから読み、その間に項が
+// 増えれば読み直す。
+static n_result FolderList( const char *path, struct n_entry **entries )
+{
+	size_t length = strlen( path );
+	n_result count = n_folder_list( path, length, NULL, 0, sizeof( struct n_entry ), 0 );
+
+	*entries = NULL;
+	while ( count >= 0 ) {
+		size_t capacity = (size_t)count + 1, i;
+		struct n_entry *list = calloc( capacity, sizeof( *list ) );
+		n_result total;
+
+		if ( !list )
+			return -N_ERR_NO_MEMORY;
+		for ( i = 0; i < capacity; i++ )
+			list[i].bytes = sizeof( list[i] );
+		total = n_folder_list( path, length, list, capacity, sizeof( *list ), 0 );
+		if ( total >= 0 && (size_t)total <= capacity ) {
+			*entries = list;
+			return total;
+		}
+		free( list );
+		count = total;
+	}
+	return count;
+}
 
 
 qboolean Sys_Mkdir( const char *path )
 {
-	struct kabi_entry entry;
+	struct n_entry entry;
 
-	if ( n_entry_info( path, &entry ) >= 0 )
-		return entry.kind == KABI_KIND_FOLDER ? qtrue : qfalse;
+	if ( EntryInfo( path, &entry ) )
+		return entry.kind == N_KIND_FOLDER ? qtrue : qfalse;
 
-	return n_folder_create( path ) >= 0 ? qtrue : qfalse;
+	return n_folder_create( path, strlen( path ) ) >= 0 ? qtrue : qfalse;
 }
 
 
@@ -47,21 +85,21 @@ qboolean Sys_Mkdir( const char *path )
 =================
 Sys_FOpen
 
-ISO fopen, except that a folder is not a file.
+ISO の fopen。ただしフォルダーはファイルとして開かない。
 =================
 */
 FILE *Sys_FOpen( const char *ospath, const char *mode )
 {
-	struct kabi_entry entry;
+	struct n_entry entry;
 
-	if ( n_entry_info( ospath, &entry ) >= 0 && entry.kind == KABI_KIND_FOLDER )
+	if ( EntryInfo( ospath, &entry ) && entry.kind == N_KIND_FOLDER )
 		return NULL;
 
 	return fopen( ospath, mode );
 }
 
 
-// Documents have no read-only attribute.
+// 文書に読むだけの属性は無い。
 qboolean Sys_ResetReadOnlyAttribute( const char *ospath )
 {
 	(void)ospath;
@@ -73,24 +111,29 @@ qboolean Sys_ResetReadOnlyAttribute( const char *ospath )
 =================
 Sys_Pwd
 
-The folder of the program's document.
+このプログラムの文書が入っているフォルダー。
 =================
 */
 const char *Sys_Pwd( void )
 {
 	static char pwd[ MAX_OSPATH ];
-	const char *program, *name;
+	n_result length, name;
 
 	if ( pwd[0] )
 		return pwd;
 
-	program = n_program_path();
-	name = n_path_name( program );
-
-	Q_strncpyz( pwd, program, (int)MIN( (size_t)( name - program ), sizeof( pwd ) ) + 1 );
-	// without the separator before the name
-	if ( pwd[0] && ( pwd[ strlen( pwd ) - 1 ] == '\\' || pwd[ strlen( pwd ) - 1 ] == '/' ) )
-		pwd[ strlen( pwd ) - 1 ] = '\0';
+	length = n_program_path( pwd, sizeof( pwd ) - 1 );
+	if ( length < 0 || (size_t)length >= sizeof( pwd ) ) {
+		pwd[0] = '\0';
+		return pwd;
+	}
+	name = n_path_name( pwd, (size_t)length );
+	if ( name < 0 )
+		name = 0;
+	// 名前の前の区切りは含めない
+	if ( name > 0 && ( pwd[ name - 1 ] == '\\' || pwd[ name - 1 ] == '/' ) )
+		name--;
+	pwd[ name ] = '\0';
 
 	return pwd;
 }
@@ -109,14 +152,14 @@ const char *Sys_DefaultHomePath( void )
 	if ( homePath[0] )
 		return homePath;
 
-	if ( n_app_data_folder( homePath, sizeof( homePath ) ) < 0 )
-		homePath[0] = '\0';
+	n_result length = n_app_data_folder( homePath, sizeof( homePath ) - 1 );
+	homePath[ length < 0 || (size_t)length >= sizeof( homePath ) ? 0 : length ] = '\0';
 
 	return homePath;
 }
 
 
-// Quake 3 is not sold through a store that installs it somewhere else.
+// Quake 3 は、ほかの場所へ入れる店では配られない。
 const char *Sys_SteamPath( void )
 {
 	return "";
@@ -130,9 +173,9 @@ Sys_GetFileStats
 */
 qboolean Sys_GetFileStats( const char *filename, fileOffset_t *size, fileTime_t *mtime, fileTime_t *ctime )
 {
-	struct kabi_entry entry;
+	struct n_entry entry;
 
-	if ( n_entry_info( filename, &entry ) >= 0 && entry.kind != KABI_KIND_FOLDER ) {
+	if ( EntryInfo( filename, &entry ) && entry.kind != N_KIND_FOLDER ) {
 		*size = (fileOffset_t)entry.size;
 		*mtime = *ctime = (fileTime_t)entry.modified;
 		return qtrue;
@@ -146,7 +189,7 @@ qboolean Sys_GetFileStats( const char *filename, fileOffset_t *size, fileTime_t 
 
 /*
 =================
-Listing
+一覧
 =================
 */
 static int Sys_ListExtFiles( const char *directory, const char *subdir, const char *extension, const char *filter, char **list, int maxfiles, int subdirs )
@@ -157,7 +200,7 @@ static int Sys_ListExtFiles( const char *directory, const char *subdir, const ch
 	int		extLen;
 	qboolean	hasPatterns;
 	qboolean	dironly;
-	struct kabi_entry *entries;
+	struct n_entry *entries;
 	n_result	count, e;
 
 	if ( extension[0] == '/' && extension[1] == 0 ) {
@@ -179,13 +222,13 @@ static int Sys_ListExtFiles( const char *directory, const char *subdir, const ch
 		Com_sprintf( search, sizeof( search ), "%s", directory );
 	}
 
-	count = n_folder_entries( search, &entries );
+	count = FolderList( search, &entries );
 	if ( count < 0 )
 		return 0;
 
 	for ( e = 0; e < count; e++ ) {
 		const char *name = entries[e].name;
-		qboolean isFolder = entries[e].kind == KABI_KIND_FOLDER ? qtrue : qfalse;
+		qboolean isFolder = entries[e].kind == N_KIND_FOLDER ? qtrue : qfalse;
 
 		if ( isFolder ) {
 			// handle recursion

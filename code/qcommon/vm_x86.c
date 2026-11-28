@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 #ifdef __nocturne__
-#include <nocturne.h>
+#include <nocturne/core.h>
 #elif !defined( _WIN32 )
 #include <sys/mman.h> // for PROT_ stuff
 #endif
@@ -4459,9 +4459,10 @@ __compile:
 #ifdef __nocturne__
 	// 書ける記憶 code に組んだ全体（コード、literal、instructionPointers）を、カーネルが領域の新しい頁へ写す。
 	{
-		struct kabi_code_segment text = { .bytes = vm->codeSize, .content = code, .content_bytes = vm->codeSize, .kind = KABI_CODE_TEXT };
-		struct kabi_code_install what = { .segments = &text, .segment_count = 1 };
-		n_result installed = n_code_install( vm->codeRegion, &what );
+		const struct n_code_segment text = { .offset = 0, .bytes = vm->codeSize, .content = (size_t)code,
+			.content_bytes = vm->codeSize, .kind = N_CODE_KIND_TEXT };
+		const struct n_code_tables tables = { .bytes = sizeof( tables ) };	// 落ちた時の表も巻き戻しの表も持たない
+		n_result installed = n_code_install( (n_code){ vm->codeRegion }, &text, 1, &tables );
 		free( code );
 		code = NULL;
 		if ( installed < 0 ) {
@@ -4515,25 +4516,25 @@ static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
 	// 実行できる頁はコードの領域だけ（Nocturne の docs/nocturne-native-abi.md §7）。番地を先に取り、組む間は書ける記憶に
 	// 書く：返すのはその記憶で、VM_Compile が組み終えてから領域へ入れる。
 	{
-		void *region = NULL;
-		n_handle handle = -1;
-		if ( n_memory_reserve( (size_t)length, 0, KABI_MEMORY_NONE, 0, &region ) < 0 ) {
+		n_result region = n_memory_reserve( (size_t)length, 0, N_MEMORY_ACCESS_NONE, 0 );
+		n_code handle;
+		if ( region < 0 ) {
 			Com_Error( ERR_FATAL, "VM_CompileX86: n_memory_reserve failed" );
 			return NULL;
 		}
-		if ( n_code_create( region, (size_t)length, &handle ) < 0 ) {
-			n_memory_release( region, (size_t)length );
+		if ( n_code_create( (size_t)region, (size_t)length, &handle ) < 0 ) {
+			n_memory_release( (size_t)region, (size_t)length );
 			Com_Error( ERR_FATAL, "VM_CompileX86: n_code_create failed" );
 			return NULL;
 		}
 		ptr = malloc( length );
 		if ( !ptr ) {
-			n_handle_close( handle );
+			n_handle_close( (n_handle){ handle.handle } );
 			Com_Error( ERR_FATAL, "VM_CompileX86: malloc failed" );
 			return NULL;
 		}
-		vm->codeRegion = handle;
-		vm->codeBase.ptr = (byte*)region;
+		vm->codeRegion = handle.handle;
+		vm->codeBase.ptr = (byte*)(size_t)region;
 		vm->codeLength = codeLength;
 		vm->codeSize = length;
 		codeDelta = (intptr_t)region - (intptr_t)ptr;
@@ -4576,7 +4577,7 @@ VM_Destroy_Compiled
 static void VM_Destroy_Compiled( vm_t* vm )
 {
 #ifdef __nocturne__
-	n_handle_close( vm->codeRegion );
+	n_handle_close( (n_handle){ vm->codeRegion } );
 #elif defined( VM_X86_MMAP )
 	munmap( vm->codeBase.ptr, vm->codeSize );
 #elif _WIN32
